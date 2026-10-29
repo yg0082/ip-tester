@@ -19,7 +19,8 @@ import javax.net.ssl.*
 import kotlin.math.roundToInt
 import org.json.JSONObject
 
-data class IpResult(val ip: String, val latencyMs: Long, val speedKbps: Double, val location: String)
+data class IpResult(val ip: String, val latencyMs: Long, val port: Int, val speedKbps: Double, val location: String)
+data class UrlTest(val latencyMs: Long, val port: Int, val https: Boolean)
 
 class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -82,7 +83,7 @@ class MainActivity : AppCompatActivity() {
                 success.mapIndexed { i, r ->
                     val speed = if (r.speedKbps <= 0) "-" else "%.0f KB/s".format(r.speedKbps)
                     "${i + 1}. ${r.ip}\n" +
-                    "   延迟 ${r.latencyMs}ms · 下载 $speed\n" +
+                    "   延迟 ${r.latencyMs}ms · 端口 ${r.port} · 下载 $speed\n" +
                     "   归属地：${r.location}\n" +
                     "────────────────────"
                 }.joinToString("\n")
@@ -105,29 +106,40 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun testOne(ip: String): IpResult {
-        val latency = urlTestMs(ip)
-        if (latency < 0) return IpResult(ip, -1, 0.0, "")
-        return IpResult(ip, latency, downloadSpeedKbps(ip), lookupLocation(ip))
+        val test = urlTest(ip)
+        if (test.latencyMs < 0) return IpResult(ip, -1, 0, 0.0, "")
+        return IpResult(ip, test.latencyMs, test.port, downloadSpeedKbps(ip, test), lookupLocation(ip))
     }
 
-    // ---- URL Test 延迟：对该 IP 本身发 HTTPS 请求，测往返时间 ----
-    private fun urlTestMs(ip: String): Long {
-        // 1) Cloudflare trace（很多优选 IP 都走 Cloudflare，能直接返回）
-        val t1 = httpsGetMs(ip, "www.cloudflare.com", "/cdn-cgi/trace")
-        if (t1 >= 0) return t1
-        // 2) 对该 IP 的 HTTPS 根路径
-        val t2 = httpsGetMs(ip, "example.com", "/")
-        if (t2 >= 0) return t2
-        // 3) HTTP 根路径兜底
-        return httpGetMs(ip, "/")
+    // ---- URL Test 延迟：按常用端口顺序，对该 IP 本身发请求，测往返时间 ----
+    // 常用端口：443/80/8443/8080/2053/2083/2087/2096/8880
+    private fun urlTest(ip: String): UrlTest {
+        val t1 = httpsGetMs(ip, "www.cloudflare.com", "/cdn-cgi/trace", 443)
+        if (t1 >= 0) return UrlTest(t1, 443, true)
+        val candidates = listOf(
+            Triple(443, true, "example.com"),
+            Triple(8443, true, "example.com"),
+            Triple(2053, true, "example.com"),
+            Triple(2083, true, "example.com"),
+            Triple(2087, true, "example.com"),
+            Triple(2096, true, "example.com"),
+            Triple(80, false, ""),
+            Triple(8080, false, ""),
+            Triple(8880, false, "")
+        )
+        for ((port, https, host) in candidates) {
+            val t = if (https) httpsGetMs(ip, host, "/", port) else httpGetMs(ip, "/", port)
+            if (t >= 0) return UrlTest(t, port, https)
+        }
+        return UrlTest(-1, 0, false)
     }
 
-    private fun httpsGetMs(ip: String, sniHost: String, path: String): Long {
+    private fun httpsGetMs(ip: String, sniHost: String, path: String, port: Int): Long {
         return try {
-            val conn = URL("https://$ip$path").openConnection() as HttpsURLConnection
+            val conn = URL("https://$ip:$port$path").openConnection() as HttpsURLConnection
             conn.sslSocketFactory = sniSocketFactory(sniHost)
             conn.hostnameVerifier = HostnameVerifier { _, _ -> true }
-            conn.connectTimeout = 5000; conn.readTimeout = 5000
+            conn.connectTimeout = 4000; conn.readTimeout = 4000
             conn.setRequestProperty("Host", sniHost)
             conn.setRequestProperty("User-Agent", "IPTester/1.0")
             val t = System.currentTimeMillis()
@@ -139,10 +151,10 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { -1 }
     }
 
-    private fun httpGetMs(ip: String, path: String): Long {
+    private fun httpGetMs(ip: String, path: String, port: Int): Long {
         return try {
-            val conn = URL("http://$ip$path").openConnection() as HttpURLConnection
-            conn.connectTimeout = 5000; conn.readTimeout = 5000
+            val conn = URL("http://$ip:$port$path").openConnection() as HttpURLConnection
+            conn.connectTimeout = 4000; conn.readTimeout = 4000
             conn.setRequestProperty("User-Agent", "IPTester/1.0")
             val t = System.currentTimeMillis()
             val code = conn.responseCode
@@ -153,18 +165,28 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { -1 }
     }
 
-    // ---- 下载速度：优先用特定测试网址 speed.cloudflare.com/__down ----
-    private fun downloadSpeedKbps(ip: String): Double {
-        val s1 = httpsDownloadKbps(ip, "speed.cloudflare.com", "/__down?bytes=2000000", 2 * 1024 * 1024)
-        if (s1 > 0) return s1
-        val s2 = httpsDownloadKbps(ip, "example.com", "/", 512 * 1024)
-        if (s2 > 0) return s2
-        return httpDownloadKbps(ip, "/", 512 * 1024)
+    // ---- 下载速度：先用测通的端口，再用特定测试网址 speed.cloudflare.com/__down ----
+    private fun downloadSpeedKbps(ip: String, test: UrlTest): Double {
+        if (test.https) {
+            val s = httpsDownloadKbps(ip, "speed.cloudflare.com", "/__down?bytes=2000000", 2 * 1024 * 1024, test.port)
+            if (s > 0) return s
+            val s2 = httpsDownloadKbps(ip, "example.com", "/", 512 * 1024, test.port)
+            if (s2 > 0) return s2
+        } else {
+            val s = httpDownloadKbps(ip, "/", 512 * 1024, test.port)
+            if (s > 0) return s
+        }
+        for (port in listOf(443, 8443, 2053, 2083, 2087, 2096)) {
+            if (port == test.port) continue
+            val s = httpsDownloadKbps(ip, "speed.cloudflare.com", "/__down?bytes=2000000", 2 * 1024 * 1024, port)
+            if (s > 0) return s
+        }
+        return 0.0
     }
 
-    private fun httpsDownloadKbps(ip: String, sniHost: String, path: String, maxBytes: Int): Double {
+    private fun httpsDownloadKbps(ip: String, sniHost: String, path: String, maxBytes: Int, port: Int): Double {
         return try {
-            val conn = URL("https://$ip$path").openConnection() as HttpsURLConnection
+            val conn = URL("https://$ip:$port$path").openConnection() as HttpsURLConnection
             conn.sslSocketFactory = sniSocketFactory(sniHost)
             conn.hostnameVerifier = HostnameVerifier { _, _ -> true }
             conn.connectTimeout = 5000; conn.readTimeout = 8000
@@ -178,9 +200,9 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { 0.0 }
     }
 
-    private fun httpDownloadKbps(ip: String, path: String, maxBytes: Int): Double {
+    private fun httpDownloadKbps(ip: String, path: String, maxBytes: Int, port: Int): Double {
         return try {
-            val conn = URL("http://$ip$path").openConnection() as HttpURLConnection
+            val conn = URL("http://$ip:$port$path").openConnection() as HttpURLConnection
             conn.connectTimeout = 5000; conn.readTimeout = 8000
             conn.setRequestProperty("User-Agent", "IPTester/1.0")
             val t = System.currentTimeMillis()
