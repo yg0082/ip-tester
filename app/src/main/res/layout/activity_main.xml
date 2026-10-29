@@ -58,7 +58,7 @@
             </LinearLayout>
 
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="提示：延迟用 URL 请求实测，失败的 IP 不显示在结果里；导出结果只导出测试成功的 IP。"
+                android:text="提示：延迟用 URL 请求实测，会自动试 443、80、8443、8080、2053、2083、2087、2096、8880 这些常用端口；失败的 IP 不显示在结果里；导出结果只导出测试成功的 IP。"
                 android:textColor="#94A3B8" android:textSize="12sp" android:layout_marginTop="14dp" />
         </LinearLayout>
     </LinearLayout>
