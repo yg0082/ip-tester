@@ -36,7 +36,10 @@
                 android:background="@drawable/bg_button_primary" android:text="▶  开始测试" android:textColor="#FFFFFF"
                 android:textSize="16sp" android:textStyle="bold" android:layout_marginTop="16dp" />
             <Button android:id="@+id/btnExport" android:layout_width="match_parent" android:layout_height="48dp"
-                android:background="@drawable/bg_button_outline" android:text="导出结果" android:textColor="#0F766E"
+                android:background="@drawable/bg_button_outline" android:text="导出结果（仅成功 IP）" android:textColor="#0F766E"
+                android:textSize="15sp" android:layout_marginTop="10dp" />
+            <Button android:id="@+id/btnClear" android:layout_width="match_parent" android:layout_height="48dp"
+                android:background="@drawable/bg_button_outline" android:text="一键清空" android:textColor="#DC2626"
                 android:textSize="15sp" android:layout_marginTop="10dp" />
 
             <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -55,7 +58,7 @@
             </LinearLayout>
 
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="提示：有的 IP 不提供网页服务，下载速度会显示“-”，以延迟为主看。"
+                android:text="提示：延迟用 URL 请求实测，失败的 IP 不显示在结果里；导出结果只导出测试成功的 IP。"
                 android:textColor="#94A3B8" android:textSize="12sp" android:layout_marginTop="14dp" />
         </LinearLayout>
     </LinearLayout>
