@@ -1,6 +1,12 @@
 package com.example.iptester
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.*
@@ -18,6 +24,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var input: EditText
     private lateinit var output: TextView
     private lateinit var status: TextView
+    private lateinit var count: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,14 +32,26 @@ class MainActivity : AppCompatActivity() {
         input = findViewById(R.id.input)
         output = findViewById(R.id.output)
         status = findViewById(R.id.status)
+        count = findViewById(R.id.count)
+        input.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val n = s.toString().lines().count { it.trim().isNotEmpty() }
+                count.text = "已输入 $n / 200 条"
+                count.setTextColor(if (n > 200) 0xFFDC2626.toInt() else 0xFF64748B.toInt())
+            }
+        })
         findViewById<Button>(R.id.btnTest).setOnClickListener { startTest() }
-        findViewById<Button>(R.id.btnLoad66).setOnClickListener { input.setText(DEFAULT_IPS) }
+        findViewById<Button>(R.id.btnExport).setOnClickListener { exportResult() }
     }
 
     private fun startTest() {
-        val ips = input.text.toString().lines().map { it.trim() }
+        val all = input.text.toString().lines().map { it.trim() }
             .filter { it.isNotEmpty() && it.matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+")) }
-        if (ips.isEmpty()) { Toast.makeText(this, "请先输入 IP，每行一个", Toast.LENGTH_SHORT).show(); return }
+        if (all.isEmpty()) { Toast.makeText(this, "请先输入 IP，每行一个", Toast.LENGTH_SHORT).show(); return }
+        val limited = all.size > 200
+        val ips = if (limited) all.take(200) else all
         status.text = "正在测试 ${ips.size} 个 IP，请稍候…"
         output.text = ""
         scope.launch {
@@ -43,19 +62,36 @@ class MainActivity : AppCompatActivity() {
                 } finally { pool.shutdown() }
             }
             val sorted = results.sortedBy { if (it.pingMs < 0) Long.MAX_VALUE else it.pingMs }
-            status.text = "完成 ${sorted.size} 个，按延迟从低到高排序"
-            output.text = sorted.joinToString("\n") {
-                "${it.ip} | 延迟 ${if (it.pingMs < 0) "超时" else "${it.pingMs}ms"} | TCP ${if (it.tcpMs < 0) "失败" else "${it.tcpMs}ms"} | 下载 ${if (it.speedKbps <= 0) "-" else "%.0f KB/s".format(it.speedKbps)} | ${it.location}"
-            }
+            val note = if (limited) "（输入超过 200 条，仅测试前 200 条）" else ""
+            status.text = "完成 ${sorted.size} 个，按延迟从低到高排序$note"
+            output.text = sorted.mapIndexed { i, r ->
+                val ping = if (r.pingMs < 0) "超时" else "${r.pingMs}ms"
+                val tcp = if (r.tcpMs < 0) "失败" else "${r.tcpMs}ms"
+                val speed = if (r.speedKbps <= 0) "-" else "%.0f KB/s".format(r.speedKbps)
+                "${i + 1}. ${r.ip}\n" +
+                "   延迟 $ping · TCP $tcp · 下载 $speed\n" +
+                "   归属地：${r.location}\n" +
+                "────────────────────"
+            }.joinToString("\n")
         }
     }
 
+    private fun exportResult() {
+        val text = output.text.toString()
+        if (text.isBlank() || text == "结果会显示在这里") {
+            Toast.makeText(this, "还没有结果，先开始测试", Toast.LENGTH_SHORT).show(); return
+        }
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("IP测试结果", text))
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text)
+        }
+        startActivity(Intent.createChooser(intent, "导出结果"))
+        Toast.makeText(this, "已复制到剪贴板，也可选择分享", Toast.LENGTH_SHORT).show()
+    }
+
     private fun testOne(ip: String): IpResult {
-        val ping = pingOnce(ip)
-        val tcp = tcpConnectMs(ip, 443)
-        val speed = downloadSpeedKbps(ip)
-        val loc = lookupLocation(ip)
-        return IpResult(ip, ping, tcp, speed, loc)
+        return IpResult(ip, pingOnce(ip), tcpConnectMs(ip, 443), downloadSpeedKbps(ip), lookupLocation(ip))
     }
 
     private fun pingOnce(ip: String): Long {
@@ -99,9 +135,5 @@ class MainActivity : AppCompatActivity() {
             val j = JSONObject(text)
             if (j.optString("status") == "success") "${j.optString("country")} ${j.optString("regionName")} ${j.optString("city")} ${j.optString("isp")}".trim() else "未知"
         } catch (e: Exception) { "未知" }
-    }
-
-    companion object {
-        const val DEFAULT_IPS = "158.94.173.107\n198.199.84.192\n107.172.190.151\n107.174.85.164\n179.255.123.190"
     }
 }
