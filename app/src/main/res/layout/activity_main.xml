@@ -55,7 +55,7 @@
             </LinearLayout>
 
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="提示：有的 IP 不提供网页服务，下载速度会显示“-”，以延迟和 TCP 为主看。"
+                android:text="提示：有的 IP 不提供网页服务，下载速度会显示“-”，以延迟为主看。"
                 android:textColor="#94A3B8" android:textSize="12sp" android:layout_marginTop="14dp" />
         </LinearLayout>
     </LinearLayout>
