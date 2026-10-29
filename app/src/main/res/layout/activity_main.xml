@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="#F1F5F9" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+
+        <!-- 顶部头图 -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:background="#0F766E" android:orientation="vertical" android:padding="20dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="🌐 IP 批量测试" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="延迟 · 下载速度 · IP 归属地，一次测完，按最快排序" android:textColor="#CCFBF1" android:textSize="14sp" android:layout_marginTop="6dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="自用工具 · 结果只保存在本机" android:textColor="#99F6E4" android:textSize="12sp" android:layout_marginTop="10dp" />
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="16dp">
+
+            <!-- 输入卡片 -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:background="@drawable/bg_card" android:elevation="3dp" android:orientation="vertical" android:padding="16dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="IP 列表" android:textSize="16sp" android:textStyle="bold" android:textColor="#0F172A" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="每行一个 IP，粘贴你那 66 条也可以" android:textColor="#64748B" android:textSize="13sp" android:layout_marginTop="4dp" />
+                <EditText android:id="@+id/input" android:layout_width="match_parent" android:layout_height="200dp"
+                    android:background="#F8FAFC" android:gravity="top" android:padding="12dp"
+                    android:hint="例如：&#10;158.94.173.107&#10;198.199.84.192"
+                    android:inputType="textMultiLine" android:textSize="14sp" android:layout_marginTop="10dp" />
+            </LinearLayout>
+
+            <Button android:id="@+id/btnTest" android:layout_width="match_parent" android:layout_height="56dp"
+                android:background="@drawable/bg_button_primary" android:text="▶  开始测试" android:textColor="#FFFFFF"
+                android:textSize="16sp" android:textStyle="bold" android:layout_marginTop="16dp" />
+            <Button android:id="@+id/btnLoad66" android:layout_width="match_parent" android:layout_height="48dp"
+                android:background="@drawable/bg_button_outline" android:text="载入示例 IP" android:textColor="#0F766E"
+                android:textSize="15sp" android:layout_marginTop="10dp" />
+
+            <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:background="@drawable/bg_status" android:padding="12dp" android:text="还没开始测试"
+                android:textColor="#115E59" android:textSize="14sp" android:layout_marginTop="16dp" />
+
+            <!-- 结果卡片 -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:background="@drawable/bg_card" android:elevation="3dp" android:orientation="vertical"
+                android:padding="16dp" android:layout_marginTop="16dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="📊 测试结果（按延迟从低到高）" android:textSize="16sp" android:textStyle="bold" android:textColor="#0F172A" />
+                <TextView android:id="@+id/output" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="结果会显示在这里" android:textColor="#334155" android:textSize="13sp"
+                    android:typeface="monospace" android:layout_marginTop="10dp" />
+            </LinearLayout>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="提示：有的 IP 不提供网页服务，下载速度会显示“-”，以延迟和 TCP 为主看。"
+                android:textColor="#94A3B8" android:textSize="12sp" android:layout_marginTop="14dp" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>
