@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 import org.json.JSONObject
 
-data class IpResult(val ip: String, val pingMs: Long, val tcpMs: Long, val speedKbps: Double, val location: String)
+data class IpResult(val ip: String, val pingMs: Long, val speedKbps: Double, val location: String)
 
 class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -66,10 +66,9 @@ class MainActivity : AppCompatActivity() {
             status.text = "完成 ${sorted.size} 个，按延迟从低到高排序$note"
             output.text = sorted.mapIndexed { i, r ->
                 val ping = if (r.pingMs < 0) "超时" else "${r.pingMs}ms"
-                val tcp = if (r.tcpMs < 0) "失败" else "${r.tcpMs}ms"
                 val speed = if (r.speedKbps <= 0) "-" else "%.0f KB/s".format(r.speedKbps)
                 "${i + 1}. ${r.ip}\n" +
-                "   延迟 $ping · TCP $tcp · 下载 $speed\n" +
+                "   延迟 $ping · 下载 $speed\n" +
                 "   归属地：${r.location}\n" +
                 "────────────────────"
             }.joinToString("\n")
@@ -91,7 +90,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun testOne(ip: String): IpResult {
-        return IpResult(ip, pingOnce(ip), tcpConnectMs(ip, 443), downloadSpeedKbps(ip), lookupLocation(ip))
+        return IpResult(ip, pingOnce(ip), downloadSpeedKbps(ip), lookupLocation(ip))
     }
 
     private fun pingOnce(ip: String): Long {
@@ -100,14 +99,6 @@ class MainActivity : AppCompatActivity() {
             val out = BufferedReader(InputStreamReader(p.inputStream)).readText()
             p.waitFor()
             Regex("time=(\\d+(\\.\\d+)?)").find(out)?.groupValues?.get(1)?.toDouble()?.roundToInt()?.toLong() ?: -1
-        } catch (e: Exception) { -1 }
-    }
-
-    private fun tcpConnectMs(ip: String, port: Int): Long {
-        return try {
-            val s = Socket(); val t = System.currentTimeMillis()
-            s.connect(InetSocketAddress(ip, port), 3000); s.close()
-            System.currentTimeMillis() - t
         } catch (e: Exception) { -1 }
     }
 
