@@ -35,6 +35,9 @@
             <Button android:id="@+id/btnTest" android:layout_width="match_parent" android:layout_height="56dp"
                 android:background="@drawable/bg_button_primary" android:text="▶  开始测试" android:textColor="#FFFFFF"
                 android:textSize="16sp" android:textStyle="bold" android:layout_marginTop="16dp" />
+            <Button android:id="@+id/btnPause" android:layout_width="match_parent" android:layout_height="48dp"
+                android:background="@drawable/bg_button_outline" android:text="暂停" android:textColor="#DC2626"
+                android:textSize="15sp" android:layout_marginTop="10dp" />
             <Button android:id="@+id/btnExport" android:layout_width="match_parent" android:layout_height="48dp"
                 android:background="@drawable/bg_button_outline" android:text="导出结果（仅成功 IP）" android:textColor="#0F766E"
                 android:textSize="15sp" android:layout_marginTop="10dp" />
