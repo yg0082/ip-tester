@@ -63,6 +63,92 @@
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="提示：每行一个 IP 或域名，可带端口（默认 443）。Cloudflare 的 IP 用域名握手测 trace 取延迟和地区，下载照常测；其他目标直接 TCP 测延迟，能连上就算成功，下载能测到就显示，测不到显示 --；结果分 Cloudflare、其他两块显示，只显示和导出成功的。"
                 android:textColor="#94A3B8" android:textSize="12sp" android:layout_marginTop="14dp" />
+
+            <!-- 订阅区块（v1.3）：优选订阅 -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:background="@drawable/bg_card" android:elevation="3dp" android:orientation="vertical"
+                android:padding="16dp" android:layout_marginTop="16dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="📡 优选订阅" android:textSize="16sp" android:textStyle="bold" android:textColor="#0F172A" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="把测好的优选 IP 变成一条固定不变的订阅链接，填进客户端一次，一直能用。模板、令牌、IP 列表只保存在本机，不会上传。"
+                    android:textColor="#64748B" android:textSize="13sp" android:layout_marginTop="6dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="节点模板" android:textSize="14sp" android:textStyle="bold" android:textColor="#0F172A" android:layout_marginTop="14dp" />
+                <EditText android:id="@+id/subTemplateInput" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:minHeight="64dp" android:background="#F8FAFC" android:gravity="top" android:padding="12dp"
+                    android:hint="粘贴一条 vless:// 节点链接（VLESS WS+TLS）" android:inputType="textMultiLine"
+                    android:textSize="13sp" android:layout_marginTop="6dp" />
+                <Button android:id="@+id/btnSaveTemplate" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="保存模板" android:textColor="#0F766E"
+                    android:textSize="15sp" android:layout_marginTop="8dp" />
+                <TextView android:id="@+id/subTemplateStatus" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="还没保存模板" android:textColor="#64748B" android:textSize="13sp" android:layout_marginTop="6dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="GitHub 令牌" android:textSize="14sp" android:textStyle="bold" android:textColor="#0F172A" android:layout_marginTop="14dp" />
+                <EditText android:id="@+id/subTokenInput" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:minHeight="48dp" android:background="#F8FAFC" android:padding="12dp"
+                    android:hint="粘贴 GitHub Personal Access Token" android:inputType="text"
+                    android:textSize="13sp" android:layout_marginTop="6dp" />
+                <Button android:id="@+id/btnSaveToken" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="保存令牌" android:textColor="#0F766E"
+                    android:textSize="15sp" android:layout_marginTop="8dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="令牌获取：GitHub → Settings → Developer settings → Personal access tokens (classic) → 新建，只勾 gist 权限。令牌只存本机。"
+                    android:textColor="#94A3B8" android:textSize="12sp" android:layout_marginTop="6dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="从测试结果加入" android:textSize="14sp" android:textStyle="bold" android:textColor="#0F172A" android:layout_marginTop="14dp" />
+                <LinearLayout android:id="@+id/subAddList" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:layout_marginTop="6dp" />
+                <Button android:id="@+id/btnAddAllResults" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="把本次成功结果全部加入订阅" android:textColor="#0F766E"
+                    android:textSize="15sp" android:layout_marginTop="8dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="手动加入优选 IP" android:textSize="14sp" android:textStyle="bold" android:textColor="#0F172A" android:layout_marginTop="14dp" />
+                <EditText android:id="@+id/subManualInput" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:minHeight="80dp" android:background="#F8FAFC" android:gravity="top" android:padding="12dp"
+                    android:hint="每行一个 IP 或 IP:端口" android:inputType="textMultiLine"
+                    android:textSize="13sp" android:layout_marginTop="6dp" />
+                <Button android:id="@+id/btnAddManual" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="加入订阅列表" android:textColor="#0F766E"
+                    android:textSize="15sp" android:layout_marginTop="8dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="订阅里的优选 IP" android:textSize="14sp" android:textStyle="bold" android:textColor="#0F172A" android:layout_marginTop="14dp" />
+                <TextView android:id="@+id/subIpCount" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="共 0 个" android:textColor="#64748B" android:textSize="13sp" android:layout_marginTop="4dp" />
+                <LinearLayout android:id="@+id/subIpList" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:layout_marginTop="6dp" />
+
+                <Button android:id="@+id/btnUpdateSub" android:layout_width="match_parent" android:layout_height="56dp"
+                    android:background="@drawable/bg_button_primary" android:text="🔄 更新订阅" android:textColor="#FFFFFF"
+                    android:textSize="16sp" android:textStyle="bold" android:layout_marginTop="16dp" />
+                <TextView android:id="@+id/subStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:background="@drawable/bg_status" android:padding="12dp" android:text="还没更新过订阅"
+                    android:textColor="#115E59" android:textSize="14sp" android:layout_marginTop="10dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="固定订阅链接（永不换，只换里面的节点）" android:textSize="14sp" android:textStyle="bold" android:textColor="#0F172A" android:layout_marginTop="14dp" />
+                <TextView android:id="@+id/subClashLink" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="还没创建订阅（Clash）"
+                    android:textColor="#0F766E" android:textSize="13sp" android:textIsSelectable="true" android:layout_marginTop="6dp" />
+                <Button android:id="@+id/btnCopyClash" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="复制 Clash 订阅链接" android:textColor="#0F766E"
+                    android:textSize="15sp" android:layout_marginTop="8dp" />
+                <TextView android:id="@+id/subSingboxLink" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="还没创建订阅（sing-box）"
+                    android:textColor="#0F766E" android:textSize="13sp" android:textIsSelectable="true" android:layout_marginTop="10dp" />
+                <Button android:id="@+id/btnCopySingbox" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="复制 sing-box 订阅链接" android:textColor="#0F766E"
+                    android:textSize="15sp" android:layout_marginTop="8dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="节点端口、SNI 等全部取自模板，只换服务器地址；SNI 保持模板域名不变。"
+                    android:textColor="#94A3B8" android:textSize="12sp" android:layout_marginTop="10dp" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

@@ -11,11 +11,16 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.*
 import okhttp3.Dns
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.net.URLDecoder
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -26,6 +31,16 @@ data class UrlTest(val latencyMs: Long, val port: Int, val https: Boolean, val r
 private data class TraceResult(val latencyMs: Long, val region: String)
 // 一个待测目标：host 为原输入的域名或 IP（IPv6 不带括号），port 默认 443
 private data class Target(val host: String, val port: Int, val isDomain: Boolean)
+// 订阅功能（v1.3）：解析出的 VLESS 节点模板（只存本机，绝不进代码或仓库）
+private data class VlessTemplate(
+    val uuid: String, val server: String, val port: Int,
+    val type: String, val encryption: String, val security: String,
+    val sni: String, val host: String, val path: String,
+    val alpn: String, val fp: String, val allowInsecure: Boolean,
+    val packetEncoding: String, val flow: String, val name: String
+)
+// 订阅里的一个优选 IP：只存 IP、端口和地区，不存测试细节
+private data class SubIpEntry(val ip: String, val port: Int, val region: String)
 
 class MainActivity: AppCompatActivity() {
     companion object {
@@ -34,6 +49,16 @@ class MainActivity: AppCompatActivity() {
         // 通用路径下载：最多读 2MB 或 5 秒
         const val GENERIC_DOWNLOAD_MAX_BYTES = 2_000_000L
         const val GENERIC_DOWNLOAD_TIMEOUT_MS = 5000L
+        // 优选订阅（v1.3）：订阅存在用户自己的 SECRET Gist 里。
+        // 代码里绝不出现任何 Gist ID、raw 订阅链接、UUID 或令牌；Gist ID 只存手机本地，
+        // 第一次更新时用令牌新建一个 SECRET Gist，以后更新用存好的 ID 去 PATCH。
+        const val GISTS_API_URL = "https://api.github.com/gists"
+        // 订阅本地存储（SharedPreferences "sub"）：模板、令牌、IP 列表、Gist ID
+        const val PREFS_SUB = "sub"
+        const val KEY_TEMPLATE = "template_link"
+        const val KEY_TOKEN = "token"
+        const val KEY_IPS = "ip_list"
+        const val KEY_GIST_ID = "gist_id"
     }
     // Cloudflare 官方 IPv4 段（https://www.cloudflare.com/ips-v4，2026-11-13）
     private val cfNetworks: List<Pair<Int, Int>> by lazy {
@@ -67,6 +92,25 @@ class MainActivity: AppCompatActivity() {
     private val failedCount = AtomicInteger(0)
     private var totalToTest = 0
     private var limitedNote = ""
+
+    // 优选订阅（v1.3）状态：模板、IP 列表、界面控件
+    private val prefsSub by lazy { getSharedPreferences(PREFS_SUB, Context.MODE_PRIVATE) }
+    private var subTemplate: VlessTemplate? = null
+    private var subIps: MutableList<SubIpEntry> = mutableListOf()
+    private var lastAddListKey = ""
+    private var subUpdating = false
+    private var subClashUrl = ""
+    private var subSingboxUrl = ""
+    private lateinit var subTemplateInput: EditText
+    private lateinit var subTemplateStatus: TextView
+    private lateinit var subTokenInput: EditText
+    private lateinit var subManualInput: EditText
+    private lateinit var subAddList: LinearLayout
+    private lateinit var subIpList: LinearLayout
+    private lateinit var subIpCount: TextView
+    private lateinit var subStatus: TextView
+    private lateinit var subClashLink: TextView
+    private lateinit var subSingboxLink: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,6 +149,7 @@ class MainActivity: AppCompatActivity() {
             completedResults.clear()
             Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show()
         }
+        initSubUi()
     }
 
     // 解析一行输入：IPv4、IPv6、域名，可带端口（默认 443）。非法行返回 null（跳过不计入）。
@@ -257,6 +302,7 @@ class MainActivity: AppCompatActivity() {
     private fun renderPartial() {
         lastSuccess = qualifiedOrdered()
         output.text = formatResults()
+        renderSubAddList()
     }
 
     private fun renderFinal(paused: Boolean) {
@@ -268,6 +314,7 @@ class MainActivity: AppCompatActivity() {
             "完成 $done/$totalToTest，成功 ${successCount.get()}，失败 ${failedCount.get()}$limitedNote"
         }
         output.text = formatResults()
+        renderSubAddList()
     }
 
     private fun formatResults(): String {
@@ -514,5 +561,601 @@ class MainActivity: AppCompatActivity() {
             }
         }
         return "--"
+    }
+
+    // ============ 优选订阅（v1.3） ============
+
+    private fun initSubUi() {
+        subTemplateInput = findViewById(R.id.subTemplateInput)
+        subTemplateStatus = findViewById(R.id.subTemplateStatus)
+        subTokenInput = findViewById(R.id.subTokenInput)
+        subManualInput = findViewById(R.id.subManualInput)
+        subAddList = findViewById(R.id.subAddList)
+        subIpList = findViewById(R.id.subIpList)
+        subIpCount = findViewById(R.id.subIpCount)
+        subStatus = findViewById(R.id.subStatus)
+        subClashLink = findViewById(R.id.subClashLink)
+        subSingboxLink = findViewById(R.id.subSingboxLink)
+        // 读回本地保存的模板和令牌（只存本机）
+        val savedLink = prefsSub.getString(KEY_TEMPLATE, "") ?: ""
+        if (savedLink.isNotBlank()) {
+            subTemplateInput.setText(savedLink)
+            subTemplate = parseVlessTemplate(savedLink)
+            updateTemplateStatus()
+        }
+        val savedToken = prefsSub.getString(KEY_TOKEN, "") ?: ""
+        if (savedToken.isNotBlank()) subTokenInput.setText(savedToken)
+        subIps = loadSubIps()
+        renderSubIpList()
+        refreshSubLinks()
+        renderSubAddList()
+
+        findViewById<Button>(R.id.btnSaveTemplate).setOnClickListener {
+            val link = subTemplateInput.text.toString().trim()
+            val t = parseVlessTemplate(link)
+            if (t == null) {
+                Toast.makeText(this, "模板不对：请粘贴一条 VLESS WS+TLS 的 vless:// 链接", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            subTemplate = t
+            prefsSub.edit().putString(KEY_TEMPLATE, link).apply()
+            updateTemplateStatus()
+            Toast.makeText(this, "模板已保存（只存本机）", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.btnSaveToken).setOnClickListener {
+            val token = subTokenInput.text.toString().trim()
+            if (token.isEmpty()) {
+                Toast.makeText(this, "令牌是空的", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            prefsSub.edit().putString(KEY_TOKEN, token).apply()
+            Toast.makeText(this, "令牌已保存（只存本机）", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.btnAddAllResults).setOnClickListener {
+            if (lastSuccess.isEmpty()) {
+                Toast.makeText(this, "还没有测试成功的目标", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            var added = 0
+            for (r in lastSuccess) {
+                if (addSubIp(r.ip, r.port, r.region)) added++
+            }
+            renderSubIpList()
+            lastAddListKey = ""
+            renderSubAddList()
+            Toast.makeText(this, "已加入 $added 个（去重后）", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.btnAddManual).setOnClickListener {
+            val text = subManualInput.text.toString()
+            var added = 0
+            for (line in text.lines()) {
+                val t = line.trim()
+                if (t.isEmpty()) continue
+                val target = parseTarget(t)
+                if (target == null || target.isDomain) continue
+                if (addSubIp(target.host, target.port, "")) added++
+            }
+            if (added > 0) subManualInput.setText("")
+            renderSubIpList()
+            lastAddListKey = ""
+            renderSubAddList()
+            Toast.makeText(this, if (added > 0) "已加入 $added 个（去重后）" else "没加入：输入里没有合法的 IP", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.btnUpdateSub).setOnClickListener { updateSubscription() }
+        findViewById<Button>(R.id.btnCopyClash).setOnClickListener {
+            if (subClashUrl.isEmpty()) Toast.makeText(this, "还没创建订阅，先点更新订阅", Toast.LENGTH_SHORT).show()
+            else copyText("Clash 订阅链接", subClashUrl)
+        }
+        findViewById<Button>(R.id.btnCopySingbox).setOnClickListener {
+            if (subSingboxUrl.isEmpty()) Toast.makeText(this, "还没创建订阅，先点更新订阅", Toast.LENGTH_SHORT).show()
+            else copyText("sing-box 订阅链接", subSingboxUrl)
+        }
+    }
+
+    private fun updateTemplateStatus() {
+        val t = subTemplate
+        subTemplateStatus.text = if (t == null) {
+            "还没保存模板"
+        } else {
+            "已保存模板：${t.server}:${t.port}，SNI ${if (t.sni.isNotEmpty()) t.sni else "（无）"}"
+        }
+    }
+
+    // 解析 vless:// 链接。只接受 VLESS WS+TLS；不合法返回 null。
+    private fun parseVlessTemplate(link: String): VlessTemplate? {
+        val s = link.trim()
+        if (!s.startsWith("vless://")) return null
+        val rest = s.removePrefix("vless://")
+        val hashIdx = rest.indexOf('#')
+        val name = if (hashIdx >= 0) urlDecode(rest.substring(hashIdx + 1)) else ""
+        val beforeFrag = if (hashIdx >= 0) rest.substring(0, hashIdx) else rest
+        val qIdx = beforeFrag.indexOf('?')
+        val userinfo = if (qIdx >= 0) beforeFrag.substring(0, qIdx) else beforeFrag
+        val queryStr = if (qIdx >= 0) beforeFrag.substring(qIdx + 1) else ""
+        val atIdx = userinfo.lastIndexOf('@')
+        if (atIdx <= 0) return null
+        val uuid = userinfo.substring(0, atIdx)
+        if (uuid.isEmpty()) return null
+        val hostport = userinfo.substring(atIdx + 1)
+        if (hostport.isEmpty()) return null
+        val (server, port) = parseHostPort(hostport) ?: return null
+        val q = parseQuery(queryStr)
+        val type = q["type"] ?: "ws"
+        val security = q["security"] ?: "tls"
+        if (type != "ws" || security != "tls") return null
+        return VlessTemplate(
+            uuid = uuid, server = server, port = port,
+            type = type,
+            encryption = q["encryption"] ?: "none",
+            security = security,
+            sni = q["sni"] ?: "",
+            host = q["host"] ?: "",
+            path = q["path"] ?: "/",
+            alpn = q["alpn"] ?: "",
+            fp = q["fp"] ?: "chrome",
+            allowInsecure = (q["allowInsecure"] == "1" || q["allowInsecure"] == "true"),
+            packetEncoding = q["packetEncoding"] ?: "",
+            flow = q["flow"] ?: "",
+            name = name
+        )
+    }
+
+    private fun urlDecode(s: String): String {
+        return try { URLDecoder.decode(s, "UTF-8") } catch (e: Exception) { s }
+    }
+
+    private fun parseQuery(q: String): Map<String, String> {
+        val map = mutableMapOf<String, String>()
+        if (q.isEmpty()) return map
+        for (part in q.split("&")) {
+            if (part.isEmpty()) continue
+            val eq = part.indexOf('=')
+            if (eq < 0) map[urlDecode(part)] = "" else map[urlDecode(part.substring(0, eq))] = urlDecode(part.substring(eq + 1))
+        }
+        return map
+    }
+
+    // 解析 host:port（支持 [IPv6]:port、IPv4:port、域名:port、无端口默认 443）
+    private fun parseHostPort(hp: String): Pair<String, Int>? {
+        val s = hp.trim()
+        if (s.isEmpty()) return null
+        if (s.startsWith("[")) {
+            val close = s.indexOf(']')
+            if (close < 0) return null
+            val host = s.substring(1, close)
+            if (host.isEmpty()) return null
+            val rest = s.substring(close + 1)
+            if (rest.isEmpty()) return host to 443
+            if (!rest.startsWith(":")) return null
+            val port = rest.substring(1).toIntOrNull() ?: return null
+            if (port !in 1..65535) return null
+            return host to port
+        }
+        val idx = s.lastIndexOf(':')
+        if (idx < 0) return s to 443
+        val host = s.substring(0, idx)
+        val port = s.substring(idx + 1).toIntOrNull() ?: return null
+        if (host.isEmpty() || port !in 1..65535) return null
+        return host to port
+    }
+
+    // ---- 优选 IP 列表（本地持久化，只存 IP、端口、地区） ----
+    private fun loadSubIps(): MutableList<SubIpEntry> {
+        val raw = prefsSub.getString(KEY_IPS, "") ?: ""
+        val list = mutableListOf<SubIpEntry>()
+        for (line in raw.lines()) {
+            val t = line.trim()
+            if (t.isEmpty()) continue
+            val parts = t.split("|")
+            if (parts.size < 2) continue
+            val ip = parts[0]
+            if (ip.isEmpty()) continue
+            val port = parts[1].toIntOrNull() ?: 443
+            val region = if (parts.size >= 3) parts[2] else ""
+            list.add(SubIpEntry(ip, port, region))
+        }
+        return list
+    }
+
+    private fun saveSubIps() {
+        val raw = subIps.joinToString("\n") { "${it.ip}|${it.port}|${it.region}" }
+        prefsSub.edit().putString(KEY_IPS, raw).apply()
+    }
+
+    private fun isInSubList(ip: String): Boolean {
+        val key = ip.lowercase(Locale.US)
+        return subIps.any { it.ip.lowercase(Locale.US) == key }
+    }
+
+    private fun addSubIp(ip: String, port: Int, region: String): Boolean {
+        val cleanIp = ip.trim().lowercase(Locale.US)
+        if (cleanIp.isEmpty()) return false
+        if (isInSubList(cleanIp)) return false
+        subIps.add(SubIpEntry(cleanIp, port, region))
+        saveSubIps()
+        return true
+    }
+
+    private fun removeSubIp(ip: String) {
+        val key = ip.lowercase(Locale.US)
+        subIps.removeAll { it.ip.lowercase(Locale.US) == key }
+        saveSubIps()
+    }
+
+    // 节点名字：有地区用“地区-IP”，没地区直接用 IP
+    private fun subNodeName(entry: SubIpEntry): String {
+        val r = entry.region.trim().lowercase(Locale.US)
+        return if (r.isNotEmpty() && r != "--") "$r-${entry.ip}" else entry.ip
+    }
+
+    // 测试结果旁的“加入订阅”按钮列表（成功结果每条一个按钮）
+    private fun renderSubAddList() {
+        val q = lastSuccess
+        val key = q.joinToString("|") { "${it.ip}:${it.port}:${it.region}" } + "#" + subIps.joinToString("|") { it.ip.lowercase(Locale.US) }
+        if (key == lastAddListKey) return
+        lastAddListKey = key
+        subAddList.removeAllViews()
+        if (q.isEmpty()) {
+            val tv = TextView(this)
+            tv.text = "暂无成功结果，先去上面测试"
+            tv.textSize = 13f
+            tv.setTextColor(0xFF64748B.toInt())
+            subAddList.addView(tv)
+            return
+        }
+        for (r in q) {
+            val row = LinearLayout(this)
+            row.orientation = LinearLayout.HORIZONTAL
+            row.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            val tv = TextView(this)
+            tv.text = r.ip + if (r.region != "--") " · ${r.region}" else ""
+            tv.textSize = 14f
+            tv.setTextColor(0xFF0F172A.toInt())
+            tv.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            val already = isInSubList(r.ip)
+            val btn = Button(this)
+            btn.text = if (already) "已加入" else "加入订阅"
+            btn.textSize = 13f
+            btn.isEnabled = !already
+            btn.setOnClickListener {
+                if (addSubIp(r.ip, r.port, r.region)) {
+                    renderSubIpList()
+                    lastAddListKey = ""
+                    renderSubAddList()
+                    Toast.makeText(this, "已加入订阅列表", Toast.LENGTH_SHORT).show()
+                }
+            }
+            row.addView(tv)
+            row.addView(btn)
+            subAddList.addView(row)
+        }
+    }
+
+    private fun renderSubIpList() {
+        subIpList.removeAllViews()
+        subIpCount.text = "共 ${subIps.size} 个"
+        if (subIps.isEmpty()) {
+            val tv = TextView(this)
+            tv.text = "列表是空的，先从测试结果或手动加入 IP"
+            tv.textSize = 13f
+            tv.setTextColor(0xFF64748B.toInt())
+            subIpList.addView(tv)
+            return
+        }
+        for (entry in subIps.toList()) {
+            val row = LinearLayout(this)
+            row.orientation = LinearLayout.HORIZONTAL
+            row.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            val tv = TextView(this)
+            tv.text = subNodeName(entry) + if (entry.port != 443) "（端口 ${entry.port}）" else ""
+            tv.textSize = 14f
+            tv.setTextColor(0xFF0F172A.toInt())
+            tv.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            val btn = Button(this)
+            btn.text = "删除"
+            btn.textSize = 13f
+            btn.setOnClickListener {
+                removeSubIp(entry.ip)
+                renderSubIpList()
+                lastAddListKey = ""
+                renderSubAddList()
+            }
+            row.addView(tv)
+            row.addView(btn)
+            subIpList.addView(row)
+        }
+    }
+
+    // ---- 订阅内容生成：克隆模板，只把 server 换成优选 IP，其他一个字不动（sni 绝不换成 IP） ----
+    private fun buildClashYaml(template: VlessTemplate, ips: List<SubIpEntry>): String {
+        val names = ips.map { subNodeName(it) }
+        val effHost = if (template.host.isNotEmpty()) template.host else template.sni
+        val path = if (template.path.isNotEmpty()) template.path else "/"
+        val sb = StringBuilder()
+        sb.append("dns:\n")
+        sb.append("  enable: true\n")
+        sb.append("  default-nameserver:\n")
+        sb.append("    - 223.5.5.5\n")
+        sb.append("    - 119.29.29.29\n")
+        sb.append("    - 114.114.114.114\n")
+        sb.append("  nameserver:\n")
+        sb.append("    - https://sm2.doh.pub/dns-query\n")
+        sb.append("    - https://dns.alidns.com/dns-query\n")
+        sb.append("port: 7890\n")
+        sb.append("socks-port: 7891\n")
+        sb.append("allow-lan: true\n")
+        sb.append("mode: rule\n")
+        sb.append("log-level: info\n")
+        sb.append("external-controller: 127.0.0.1:9090\n")
+        sb.append("proxies:\n")
+        for ((i, entry) in ips.withIndex()) {
+            val parts = mutableListOf<String>()
+            parts.add("name: ${yamlQuote(names[i])}")
+            parts.add("server: ${yamlQuote(entry.ip)}")
+            parts.add("port: ${template.port}")
+            parts.add("type: vless")
+            parts.add("uuid: ${template.uuid}")
+            parts.add("tls: true")
+            parts.add("skip-cert-verify: ${template.allowInsecure}")
+            if (template.sni.isNotEmpty()) parts.add("servername: ${template.sni}")
+            parts.add("client-fingerprint: ${template.fp}")
+            parts.add("network: ws")
+            val wsParts = mutableListOf<String>()
+            wsParts.add("path: ${yamlDq(path)}")
+            if (effHost.isNotEmpty()) wsParts.add("headers: {Host: $effHost}")
+            parts.add("ws-opts: {${wsParts.joinToString(", ")}}")
+            sb.append("  - {${parts.joinToString(", ")}}\n")
+        }
+        sb.append("proxy-groups:\n")
+        sb.append("  - name: 优选\n")
+        sb.append("    type: select\n")
+        sb.append("    proxies:\n")
+        for (name in names) sb.append("      - ${yamlQuote(name)}\n")
+        sb.append("  - name: 自动选择\n")
+        sb.append("    type: url-test\n")
+        sb.append("    url: https://www.google.com/generate_204\n")
+        sb.append("    interval: 300\n")
+        sb.append("    tolerance: 50\n")
+        sb.append("    proxies:\n")
+        for (name in names) sb.append("      - ${yamlQuote(name)}\n")
+        sb.append("rules:\n")
+        sb.append("  - MATCH,优选\n")
+        return sb.toString()
+    }
+
+    private fun buildSingboxJson(template: VlessTemplate, ips: List<SubIpEntry>): String {
+        val names = ips.map { subNodeName(it) }
+        val effHost = if (template.host.isNotEmpty()) template.host else template.sni
+        val path = if (template.path.isNotEmpty()) template.path else "/"
+        val sb = StringBuilder()
+        sb.append("{\n  \"outbounds\": [\n")
+        for ((i, entry) in ips.withIndex()) {
+            sb.append("    {\n")
+            sb.append("      \"type\": \"vless\",\n")
+            sb.append("      \"tag\": ${jsonDq(names[i])},\n")
+            sb.append("      \"server\": ${jsonDq(entry.ip)},\n")
+            sb.append("      \"server_port\": ${template.port},\n")
+            sb.append("      \"uuid\": ${jsonDq(template.uuid)},\n")
+            if (template.flow.isNotEmpty()) sb.append("      \"flow\": ${jsonDq(template.flow)},\n")
+            sb.append("      \"tls\": {\n")
+            sb.append("        \"enabled\": true,\n")
+            if (template.sni.isNotEmpty()) sb.append("        \"server_name\": ${jsonDq(template.sni)},\n")
+            sb.append("        \"insecure\": ${template.allowInsecure}")
+            if (template.alpn.isNotEmpty()) {
+                val alpns = template.alpn.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                if (alpns.isNotEmpty()) {
+                    sb.append(",\n        \"alpn\": [")
+                    sb.append(alpns.joinToString(", ") { jsonDq(it) })
+                    sb.append("]")
+                }
+            }
+            if (template.fp.isNotEmpty()) {
+                sb.append(",\n        \"utls\": {\n          \"enabled\": true,\n          \"fingerprint\": ${jsonDq(template.fp)}\n        }")
+            }
+            sb.append("\n      },\n")
+            sb.append("      \"transport\": {\n")
+            sb.append("        \"type\": \"ws\",\n")
+            sb.append("        \"path\": ${jsonDq(path)}")
+            if (effHost.isNotEmpty()) sb.append(",\n        \"headers\": { \"Host\": ${jsonDq(effHost)} }")
+            sb.append("\n      }")
+            if (template.packetEncoding.isNotEmpty()) sb.append(",\n      \"packet_encoding\": ${jsonDq(template.packetEncoding)}")
+            sb.append("\n    }")
+            if (i < ips.size - 1) sb.append(",")
+            sb.append("\n")
+        }
+        sb.append("    ,{\"type\": \"selector\", \"tag\": \"优选\", \"outbounds\": [")
+        sb.append(names.joinToString(", ") { jsonDq(it) })
+        sb.append("]},\n")
+        sb.append("    {\"type\": \"urltest\", \"tag\": \"自动选择\", \"outbounds\": [")
+        sb.append(names.joinToString(", ") { jsonDq(it) })
+        sb.append("], \"url\": \"https://www.google.com/generate_204\", \"interval\": \"5m\"}\n")
+        sb.append("  ]\n}\n")
+        return sb.toString()
+    }
+
+    private fun yamlDq(s: String): String {
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    }
+
+    private fun yamlQuote(s: String): String {
+        return if (s.contains(":") || s.contains("#") || s.contains(" ")) yamlDq(s) else s
+    }
+
+    private fun jsonDq(s: String): String = "\"" + jsonEscape(s) + "\""
+
+    private fun jsonEscape(s: String): String {
+        val sb = StringBuilder()
+        for (c in s) {
+            when (c) {
+                '"' -> sb.append("\\\"")
+                '\\' -> sb.append("\\\\")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                else -> if (c.code < 0x20) sb.append(String.format(Locale.US, "\\u%04x", c.code)) else sb.append(c)
+            }
+        }
+        return sb.toString()
+    }
+
+    // ---- Gist 订阅（SECRET Gist，Gist ID 只存本机） ----
+    // raw 订阅链接由存好的 Gist ID 在运行时拼出来（无 hash 形式，永远取最新内容）
+    private fun gistRawUrl(gistId: String, file: String): String {
+        return "https://gist.githubusercontent.com/yg0082/$gistId/raw/$file"
+    }
+
+    private fun refreshSubLinks() {
+        val gistId = prefsSub.getString(KEY_GIST_ID, "") ?: ""
+        if (gistId.isBlank()) {
+            subClashUrl = ""
+            subSingboxUrl = ""
+            subClashLink.text = "还没创建订阅（Clash）"
+            subSingboxLink.text = "还没创建订阅（sing-box）"
+        } else {
+            subClashUrl = gistRawUrl(gistId, "clash.yaml")
+            subSingboxUrl = gistRawUrl(gistId, "singbox.json")
+            subClashLink.text = subClashUrl
+            subSingboxLink.text = subSingboxUrl
+        }
+    }
+
+    private fun updateSubscription() {
+        val template = subTemplate
+        if (template == null) {
+            subStatus.text = "更新失败：还没保存节点模板，先在上面粘贴一条 vless:// 链接并保存"
+            Toast.makeText(this, "还没保存节点模板", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val token = prefsSub.getString(KEY_TOKEN, "") ?: ""
+        if (token.isBlank()) {
+            subStatus.text = "更新失败：还没填 GitHub 令牌，先在上面填好令牌并保存"
+            Toast.makeText(this, "还没填 GitHub 令牌", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (subIps.isEmpty()) {
+            subStatus.text = "更新失败：优选 IP 列表是空的，先从测试结果或手动加入 IP"
+            Toast.makeText(this, "优选 IP 列表是空的", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (subUpdating) return
+        subUpdating = true
+        val storedId = prefsSub.getString(KEY_GIST_ID, "") ?: ""
+        subStatus.text = if (storedId.isBlank()) "正在创建订阅（新建 SECRET Gist）…" else "正在更新订阅…"
+        val clash = buildClashYaml(template, subIps)
+        val singbox = buildSingboxJson(template, subIps)
+        scope.launch(Dispatchers.IO) {
+            var finalId = storedId
+            var finalErr: String? = null
+            var wasCreated = false
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .build()
+                if (finalId.isBlank()) {
+                    // 第一次更新：新建 SECRET Gist，内容就是这次生成的订阅
+                    val created: Pair<String?, String?> = createSecretGist(client, token, clash, singbox)
+                    if (created.first != null) { finalId = created.first!!; wasCreated = true } else { finalErr = created.second }
+                } else {
+                    val patchErr = patchGist(client, token, finalId, clash, singbox)
+                    if (patchErr == null) {
+                        // 更新成功
+                    } else if (patchErr.contains("404")) {
+                        // Gist 已删：清掉本机记录，重新建一个
+                        val created: Pair<String?, String?> = createSecretGist(client, token, clash, singbox)
+                        if (created.first != null) { finalId = created.first!!; wasCreated = true } else { finalErr = created.second }
+                    } else {
+                        finalErr = patchErr
+                    }
+                }
+            } catch (e: Exception) {
+                finalErr = e.message ?: "网络错误"
+            }
+            val errToShow = finalErr
+            val idToShow = finalId
+            val createdToShow = wasCreated
+            scope.launch(Dispatchers.Main) {
+                subUpdating = false
+                if (errToShow == null) {
+                    prefsSub.edit().putString(KEY_GIST_ID, idToShow).apply()
+                    refreshSubLinks()
+                    val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+                    subStatus.text = if (createdToShow) "订阅已创建并更新：$now（${subIps.size} 条节点），链接不变" else "更新成功：$now，订阅已更新（${subIps.size} 条节点），链接不变"
+                    Toast.makeText(this@MainActivity, if (createdToShow) "订阅已创建" else "订阅更新成功", Toast.LENGTH_SHORT).show()
+                } else {
+                    subStatus.text = "更新失败：$errToShow${gistErrorHint(errToShow)}"
+                    Toast.makeText(this@MainActivity, "更新失败", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun gistErrorHint(err: String): String {
+        return when {
+            err.contains("401") -> "（令牌不对或已过期，请重新建一个令牌再填）"
+            err.contains("403") -> "（令牌权限不够，建令牌时要勾 gist 权限）"
+            err.contains("404") -> "（订阅找不到了）"
+            err.contains("422") -> "（请求有问题）"
+            else -> ""
+        }
+    }
+
+    // 新建 SECRET Gist（public=false），成功返回 Gist ID，失败返回 (null, 原因)
+    private fun createSecretGist(client: OkHttpClient, token: String, clash: String, singbox: String): Pair<String?, String?> {
+        val bodyJson = "{\"description\":\"批量测IP 优选订阅\",\"public\":false,\"files\":{\"clash.yaml\":{\"content\":${jsonDq(clash)}},\"singbox.json\":{\"content\":${jsonDq(singbox)}}}}"
+        val body = bodyJson.toRequestBody("application/json; charset=utf-8".toMediaType())
+        val req = Request.Builder()
+            .url(GISTS_API_URL)
+            .post(body)
+            .header("Authorization", "Bearer $token")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "IPTester/1.0")
+            .build()
+        val result: Pair<String?, String?> = try {
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body?.string() ?: ""
+                if (!resp.isSuccessful) {
+                    Pair<String?, String?>(null, "HTTP ${resp.code} ${resp.message}")
+                } else {
+                    val id = extractGistId(text)
+                    if (id.isNullOrBlank()) Pair<String?, String?>(null, "创建成功但没取到 Gist ID") else Pair<String?, String?>(id, null)
+                }
+            }
+        } catch (e: Exception) {
+            Pair<String?, String?>(null, e.message ?: "网络错误")
+        }
+        return result
+    }
+
+    // 从新建 Gist 的返回里取顶层 id（第一个 "id": "..." 字符串字段）
+    private fun extractGistId(json: String): String? {
+        val m = Regex("\"id\"\\s*:\\s*\"([0-9a-zA-Z]+)\"").find(json)
+        return m?.groupValues?.getOrNull(1)
+    }
+
+    // 用存好的 Gist ID 更新两个文件；成功返回 null，失败返回原因
+    private fun patchGist(client: OkHttpClient, token: String, gistId: String, clash: String, singbox: String): String? {
+        val bodyJson = "{\"files\":{\"clash.yaml\":{\"content\":${jsonDq(clash)}},\"singbox.json\":{\"content\":${jsonDq(singbox)}}}}"
+        val body = bodyJson.toRequestBody("application/json; charset=utf-8".toMediaType())
+        val req = Request.Builder()
+            .url("$GISTS_API_URL/$gistId")
+            .patch(body)
+            .header("Authorization", "Bearer $token")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "IPTester/1.0")
+            .build()
+        return try {
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) null else "HTTP ${resp.code} ${resp.message}"
+            }
+        } catch (e: Exception) {
+            e.message ?: "网络错误"
+        }
+    }
+
+    private fun copyText(label: String, text: String) {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText(label, text))
+        Toast.makeText(this, "已复制：$label", Toast.LENGTH_SHORT).show()
     }
 }
