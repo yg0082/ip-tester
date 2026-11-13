@@ -125,7 +125,7 @@ class MainActivity: AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) {
                 val n = s.toString().lines().count { parseTarget(it.trim()) != null }
                 count.text = "已输入 $n / 200 条"
-                count.setTextColor(if (n > 200) 0xFFDC2626.toInt() else 0xFF64748B.toInt())
+                count.setTextColor(if (n > 200) 0xFFF85149.toInt() else 0xFF8B949E.toInt())
             }
         })
         findViewById<Button>(R.id.btnTest).setOnClickListener { startTest()}
@@ -625,6 +625,15 @@ class MainActivity: AppCompatActivity() {
             renderSubAddList()
             Toast.makeText(this, "已加入 $added 个（去重后）", Toast.LENGTH_SHORT).show()
         }
+        // v1.4：一键清空订阅列表（只清订阅里的优选 IP，不动测试结果和输入）
+        findViewById<Button>(R.id.btnClearSub).setOnClickListener {
+            subIps.clear()
+            saveSubIps()
+            renderSubIpList()
+            lastAddListKey = ""
+            renderSubAddList()
+            Toast.makeText(this, "订阅列表已清空", Toast.LENGTH_SHORT).show()
+        }
         findViewById<Button>(R.id.btnAddManual).setOnClickListener {
             val text = subManualInput.text.toString()
             var added = 0
@@ -799,7 +808,7 @@ class MainActivity: AppCompatActivity() {
             val tv = TextView(this)
             tv.text = "暂无成功结果，先去上面测试"
             tv.textSize = 13f
-            tv.setTextColor(0xFF64748B.toInt())
+            tv.setTextColor(0xFF8B949E.toInt())
             subAddList.addView(tv)
             return
         }
@@ -810,12 +819,14 @@ class MainActivity: AppCompatActivity() {
             val tv = TextView(this)
             tv.text = r.ip + if (r.region != "--") " · ${r.region}" else ""
             tv.textSize = 14f
-            tv.setTextColor(0xFF0F172A.toInt())
+            tv.setTextColor(0xFFE6EDF3.toInt())
             tv.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             val already = isInSubList(r.ip)
             val btn = Button(this)
             btn.text = if (already) "已加入" else "加入订阅"
             btn.textSize = 13f
+            btn.setBackgroundResource(R.drawable.bg_button_outline)
+            btn.setTextColor(0xFF58A6FF.toInt())
             btn.isEnabled = !already
             btn.setOnClickListener {
                 if (addSubIp(r.ip, r.port, r.region)) {
@@ -838,22 +849,29 @@ class MainActivity: AppCompatActivity() {
             val tv = TextView(this)
             tv.text = "列表是空的，先从测试结果或手动加入 IP"
             tv.textSize = 13f
-            tv.setTextColor(0xFF64748B.toInt())
+            tv.setTextColor(0xFF8B949E.toInt())
             subIpList.addView(tv)
             return
         }
+        val density = resources.displayMetrics.density
         for (entry in subIps.toList()) {
             val row = LinearLayout(this)
             row.orientation = LinearLayout.HORIZONTAL
             row.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             val tv = TextView(this)
             tv.text = subNodeName(entry) + if (entry.port != 443) "（端口 ${entry.port}）" else ""
-            tv.textSize = 14f
-            tv.setTextColor(0xFF0F172A.toInt())
+            tv.textSize = 13f
+            tv.setTextColor(0xFFE6EDF3.toInt())
             tv.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            // v1.4：删除按钮改小，行高紧凑，10 行能塞进固定框
             val btn = Button(this)
             btn.text = "删除"
-            btn.textSize = 13f
+            btn.textSize = 12f
+            btn.setBackgroundResource(R.drawable.bg_button_danger)
+            btn.setTextColor(0xFFF85149.toInt())
+            btn.minHeight = 0
+            btn.minimumWidth = 0
+            btn.setPadding((12 * density).toInt(), (2 * density).toInt(), (12 * density).toInt(), (2 * density).toInt())
             btn.setOnClickListener {
                 removeSubIp(entry.ip)
                 renderSubIpList()
@@ -1071,22 +1089,59 @@ class MainActivity: AppCompatActivity() {
             } catch (e: Exception) {
                 finalErr = e.message ?: "网络错误"
             }
+            // v1.4：Gist 成功后立刻用 no-cache GET 刷一次两条 raw 链接，强制最近的 CDN 节点
+            // 回源取最新内容并重新缓存，客户端刷新就能立刻看到新 IP。失败也不影响更新成功，
+            // 只影响状态文字里的同步提示。放在 IO 线程做，超时 10 秒。
+            var cdnWarmed = false
+            if (finalErr == null) {
+                val warmClient = OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(10, TimeUnit.SECONDS)
+                    .callTimeout(10, TimeUnit.SECONDS)
+                    .build()
+                cdnWarmed = warmCdnCache(warmClient, gistRawUrl(finalId, "clash.yaml")) &&
+                        warmCdnCache(warmClient, gistRawUrl(finalId, "singbox.json"))
+            }
             val errToShow = finalErr
             val idToShow = finalId
             val createdToShow = wasCreated
+            val cdnWarmedToShow = cdnWarmed
             scope.launch(Dispatchers.Main) {
                 subUpdating = false
                 if (errToShow == null) {
                     prefsSub.edit().putString(KEY_GIST_ID, idToShow).apply()
                     refreshSubLinks()
                     val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
-                    subStatus.text = if (createdToShow) "订阅已创建并更新：$now（${subIps.size} 条节点），链接不变" else "更新成功：$now，订阅已更新（${subIps.size} 条节点），链接不变"
+                    subStatus.text = if (cdnWarmedToShow) {
+                        "更新成功：$now，订阅已更新（${subIps.size} 条节点），链接不变；客户端刷新即可看到新 IP"
+                    } else {
+                        "更新成功：$now，订阅已更新（${subIps.size} 条节点），链接不变；客户端约 5 分钟内同步"
+                    }
                     Toast.makeText(this@MainActivity, if (createdToShow) "订阅已创建" else "订阅更新成功", Toast.LENGTH_SHORT).show()
                 } else {
                     subStatus.text = "更新失败：$errToShow${gistErrorHint(errToShow)}"
                     Toast.makeText(this@MainActivity, "更新失败", Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+    }
+
+    // v1.4：用 no-cache GET 请求一条 raw 订阅链接，强制最近的 CDN 节点回源取最新内容。
+    // 返回 true 表示 CDN 已刷新（HTTP 2xx）；任何失败都返回 false，不影响更新成功本身。
+    private fun warmCdnCache(client: OkHttpClient, url: String): Boolean {
+        return try {
+            val req = Request.Builder()
+                .url(url)
+                .header("Cache-Control", "no-cache")
+                .header("Pragma", "no-cache")
+                .header("User-Agent", "IPTester/1.0")
+                .build()
+            client.newCall(req).execute().use { resp ->
+                resp.body?.close()
+                resp.isSuccessful
+            }
+        } catch (e: Exception) {
+            false
         }
     }
 
