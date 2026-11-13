@@ -30,7 +30,7 @@ private data class Target(val host: String, val port: Int, val isDomain: Boolean
 class MainActivity: AppCompatActivity() {
     companion object {
         const val CONCURRENCY = 10
-        const val DOWNLOAD_BYTES = 10_000_000L
+        const val DOWNLOAD_BYTES = 1_000_000L
         // 通用路径下载：最多读 2MB 或 5 秒
         const val GENERIC_DOWNLOAD_MAX_BYTES = 2_000_000L
         const val GENERIC_DOWNLOAD_TIMEOUT_MS = 5000L
@@ -398,12 +398,13 @@ class MainActivity: AppCompatActivity() {
                 .callTimeout(5, TimeUnit.SECONDS)
                 .build()
             val req = Request.Builder().url(url).header("User-Agent", "IPTester/1.0").build()
-            val t = System.currentTimeMillis()
             client.newCall(req).execute().use { resp ->
                 if (resp.code !in 200..399) return -1.0
                 val body = resp.body ?: return -1.0
                 val buf = ByteArray(8192)
                 var total = 0L
+                // 计时从开始读数据算起，不算 TCP+TLS 握手和等首字节的时间
+                val t = System.currentTimeMillis()
                 val deadline = t + GENERIC_DOWNLOAD_TIMEOUT_MS
                 body.byteStream().use { ins ->
                     var n: Int
@@ -475,24 +476,25 @@ class MainActivity: AppCompatActivity() {
         } catch (e: Exception) { null}
     }
 
-    // 下载测速：只测延迟通过的 IP。连候选 IP、用域名 SNI 下 10MB，算 MB/s；测不到返回 -1（显示 --）。
+    // 下载测速：只测延迟通过的 IP。连候选 IP、用域名 SNI 下 1MB，算 MB/s；测不到返回 -1（显示 --）。
     private fun downloadSpeedMbps(ip: String, test: UrlTest): Double {
         val port = if (test.https) test.port else 443
         val client = clientForIp(ip, "speed.cloudflare.com")
             .newBuilder()
-            .readTimeout(15, TimeUnit.SECONDS)
-            .callTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(30, TimeUnit.SECONDS)
             .build()
         val url = if (port == 443) "https://speed.cloudflare.com/__down?bytes=$DOWNLOAD_BYTES"
         else "https://speed.cloudflare.com:$port/__down?bytes=$DOWNLOAD_BYTES"
         val req = Request.Builder().url(url).header("User-Agent", "IPTester/1.0").build()
         return try {
-            val t = System.currentTimeMillis()
             client.newCall(req).execute().use { resp ->
                 if (resp.code!in 200..399) return -1.0
                 val body = resp.body?: return -1.0
                 val buf = ByteArray(8192)
                 var total = 0L
+                // 计时从开始读数据算起，不算 TCP+TLS 握手和等首字节的时间
+                val t = System.currentTimeMillis()
                 body.byteStream().use { ins ->
                     var n: Int
                     while (ins.read(buf).also { n = it}!= -1 && total < DOWNLOAD_BYTES) { total += n}

@@ -9,7 +9,7 @@
 - 域名：先用系统 DNS 解析成 IP 再测，解析失败算失败
 - 并发测试：10 条同时测，速度比逐条快很多
 - 测速方法（分两条路，自动判断）：
-  - Cloudflare 的 IP：连候选 IP、用域名做 SNI 握手，测 `www.cloudflare.com/cdn-cgi/trace` 取延迟和机房地区（先试你给的端口，再试 443、8443、2053、2083、2087、2096、80、8080、8880）；下载从 `speed.cloudflare.com` 下 10MB 实测，算 MB/s
+  - Cloudflare 的 IP：连候选 IP、用域名做 SNI 握手，测 `www.cloudflare.com/cdn-cgi/trace` 取延迟和机房地区（先试你给的端口，再试 443、8443、2053、2083、2087、2096、80、8080、8880）；下载从 `speed.cloudflare.com` 下 1MB 实测，计时从开始读数据算起、不算握手时间，超时 30 秒，算 MB/s
   - 其他 IP/域名：直接 TCP 连目标 IP:端口测连接时间（毫秒），超时 3 秒，连不上再试 80 端口；下载试 HTTPS GET `https://目标/`（不行再试 `http://目标:80/`），最多读 2MB 或 5 秒，算 MB/s，测不到显示 `--`
 - 地区：只有 Cloudflare 的 IP 从 trace 取机房地区码（us、hk、sg、jp…）；其他目标没有地区，显示 `--`，不查 geo 网站
 - 成功标准：Cloudflare 的 IP 测出延迟就算成功；其他目标 TCP 能连上就算成功。下载速度照常测、照常显示，但不做筛选，结果里显示全部成功的，由你自己挑
