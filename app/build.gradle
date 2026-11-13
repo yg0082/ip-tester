@@ -1,9 +1,29 @@
 plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
+
+// 固定签名：GitHub Actions 里由 Secrets 注入密钥库（IPTESTER_KEYSTORE_PATH 等环境变量）。
+// 有这些变量时 debug 包也用这个固定密钥库签名，保证每次签名一致、可以直接覆盖安装；
+// 本地没有这些变量时沿用默认 debug 签名。
+def ksPath = System.getenv("IPTESTER_KEYSTORE_PATH")
+
 android {
     namespace 'com.example.iptester'
     compileSdk 34
     defaultConfig { applicationId "com.example.iptester"; minSdk 24; targetSdk 34; versionCode 7; versionName "1.4" }
-    buildTypes { release { minifyEnabled false } }
+    signingConfigs {
+        fixed {
+            storeFile file(ksPath ?: "nonexistent.keystore")
+            storePassword System.getenv("IPTESTER_KEYSTORE_PASSWORD") ?: ""
+            keyAlias System.getenv("IPTESTER_KEY_ALIAS") ?: "iptester"
+            keyPassword System.getenv("IPTESTER_KEY_PASSWORD") ?: ""
+            storeType "PKCS12"
+        }
+    }
+    buildTypes {
+        debug {
+            if (ksPath != null) signingConfig signingConfigs.fixed
+        }
+        release { minifyEnabled false }
+    }
     compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
     kotlinOptions { jvmTarget = '1.8' }
 }
