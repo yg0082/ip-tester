@@ -10,7 +10,7 @@
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="🌐 IP 批量测试" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="延迟 · 下载速度 · IP 归属地，一次测完，按最快排序" android:textColor="#CCFBF1" android:textSize="14sp" android:layout_marginTop="6dp" />
+                android:text="延迟 · 下载速度 · 机房地区，一次测完，按地区分组" android:textColor="#CCFBF1" android:textSize="14sp" android:layout_marginTop="6dp" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="自用工具 · 结果只保存在本机" android:textColor="#99F6E4" android:textSize="12sp" android:layout_marginTop="10dp" />
         </LinearLayout>
@@ -54,14 +54,14 @@
                 android:background="@drawable/bg_card" android:elevation="3dp" android:orientation="vertical"
                 android:padding="16dp" android:layout_marginTop="16dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="📊 测试结果（按延迟从低到高）" android:textSize="16sp" android:textStyle="bold" android:textColor="#0F172A" />
+                    android:text="📊 测试结果（按地区分组，组内按下载速度从高到低）" android:textSize="16sp" android:textStyle="bold" android:textColor="#0F172A" />
                 <TextView android:id="@+id/output" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:text="结果会显示在这里" android:textColor="#334155" android:textSize="14sp"
                     android:lineSpacingExtra="4dp" android:textIsSelectable="true" android:layout_marginTop="10dp" />
             </LinearLayout>
 
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="提示：延迟用 URL 请求实测，会自动试 443、80、8443、8080、2053、2083、2087、2096、8880 这些常用端口；失败的 IP 不显示在结果里；导出结果只导出测试成功的 IP。"
+                android:text="提示：延迟和下载都用域名握手实测（连候选 IP、用域名做 SNI），先试 443，再试 8443、2053、2083、2087、2096、80、8080、8880；下载速度 ≥ 5 MB/s 才算合格；结果按机房地区分组（us、hk、sg、jp…），组内按下载速度从高到低；只显示和导出合格的 IP。"
                 android:textColor="#94A3B8" android:textSize="12sp" android:layout_marginTop="14dp" />
         </LinearLayout>
     </LinearLayout>
