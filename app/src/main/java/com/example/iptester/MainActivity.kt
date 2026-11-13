@@ -676,7 +676,7 @@ class MainActivity: AppCompatActivity() {
         if (atIdx <= 0) return null
         val uuid = userinfo.substring(0, atIdx)
         if (uuid.isEmpty()) return null
-        val hostport = userinfo.substring(atIdx + 1)
+        val hostport = userinfo.substring(atIdx + 1).trimEnd('/')
         if (hostport.isEmpty()) return null
         val (server, port) = parseHostPort(hostport) ?: return null
         val q = parseQuery(queryStr)
@@ -717,7 +717,7 @@ class MainActivity: AppCompatActivity() {
 
     // 解析 host:port（支持 [IPv6]:port、IPv4:port、域名:port、无端口默认 443）
     private fun parseHostPort(hp: String): Pair<String, Int>? {
-        val s = hp.trim()
+        val s = hp.trim().trimEnd('/')  // 容错：vless 链接里端口后常带一个 /（如 :443/?type=...）
         if (s.isEmpty()) return null
         if (s.startsWith("[")) {
             val close = s.indexOf(']')
