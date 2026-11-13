@@ -10,7 +10,7 @@
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="🌐 IP 批量测试" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="延迟 · 下载速度 · 机房地区，一次测完，按地区分组" android:textColor="#CCFBF1" android:textSize="14sp" android:layout_marginTop="6dp" />
+                android:text="延迟 · 下载速度，IP 和域名都能测" android:textColor="#CCFBF1" android:textSize="14sp" android:layout_marginTop="6dp" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="自用工具 · 结果只保存在本机" android:textColor="#99F6E4" android:textSize="12sp" android:layout_marginTop="10dp" />
         </LinearLayout>
@@ -22,10 +22,10 @@
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:background="@drawable/bg_card" android:elevation="3dp" android:orientation="vertical" android:padding="16dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="IP 列表" android:textSize="16sp" android:textStyle="bold" android:textColor="#0F172A" />
+                    android:text="目标列表" android:textSize="16sp" android:textStyle="bold" android:textColor="#0F172A" />
                 <EditText android:id="@+id/input" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:minHeight="200dp" android:background="#F8FAFC" android:gravity="top" android:padding="12dp"
-                    android:hint="例如：&#10;158.94.173.107&#10;198.199.84.192"
+                    android:hint="例如：&#10;8.219.0.80&#10;8.219.0.80:443&#10;example.com&#10;example.com:8080"
                     android:inputType="textMultiLine" android:textSize="14sp" android:layout_marginTop="10dp"
                     android:scrollbars="none" android:overScrollMode="never" android:isScrollContainer="false" />
                 <TextView android:id="@+id/count" android:layout_width="wrap_content" android:layout_height="wrap_content"
@@ -39,7 +39,7 @@
                 android:background="@drawable/bg_button_outline" android:text="暂停" android:textColor="#DC2626"
                 android:textSize="15sp" android:layout_marginTop="10dp" />
             <Button android:id="@+id/btnExport" android:layout_width="match_parent" android:layout_height="48dp"
-                android:background="@drawable/bg_button_outline" android:text="导出结果（仅成功 IP）" android:textColor="#0F766E"
+                android:background="@drawable/bg_button_outline" android:text="导出结果（仅成功目标）" android:textColor="#0F766E"
                 android:textSize="15sp" android:layout_marginTop="10dp" />
             <Button android:id="@+id/btnClear" android:layout_width="match_parent" android:layout_height="48dp"
                 android:background="@drawable/bg_button_outline" android:text="一键清空" android:textColor="#DC2626"
@@ -54,14 +54,14 @@
                 android:background="@drawable/bg_card" android:elevation="3dp" android:orientation="vertical"
                 android:padding="16dp" android:layout_marginTop="16dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="📊 测试结果（按地区分组，组内按下载速度从高到低）" android:textSize="16sp" android:textStyle="bold" android:textColor="#0F172A" />
+                    android:text="📊 测试结果（Cloudflare 按地区分组 · 其他按延迟排序）" android:textSize="16sp" android:textStyle="bold" android:textColor="#0F172A" />
                 <TextView android:id="@+id/output" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:text="结果会显示在这里" android:textColor="#334155" android:textSize="14sp"
                     android:lineSpacingExtra="4dp" android:textIsSelectable="true" android:layout_marginTop="10dp" />
             </LinearLayout>
 
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="提示：延迟和下载都用域名握手实测（连候选 IP、用域名做 SNI），先试 443，再试 8443、2053、2083、2087、2096、80、8080、8880；下载速度 ≥ 5 MB/s 才算合格；结果按机房地区分组（us、hk、sg、jp…），组内按下载速度从高到低；只显示和导出合格的 IP。"
+                android:text="提示：每行一个 IP 或域名，可带端口（默认 443）。Cloudflare 的 IP 用域名握手测 trace 取延迟和地区，下载照常测；其他目标直接 TCP 测延迟，能连上就算成功，下载能测到就显示，测不到显示 --；结果分 Cloudflare、其他两块显示，只显示和导出成功的。"
                 android:textColor="#94A3B8" android:textSize="12sp" android:layout_marginTop="14dp" />
         </LinearLayout>
     </LinearLayout>
