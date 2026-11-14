@@ -1006,7 +1006,7 @@ class MainActivity: AppCompatActivity() {
                 return@setOnClickListener
             }
             var added = 0
-            for (r in lastSuccess) {
+            for (r in topAddList()) {
                 if (addSubIp(r.ip, r.port, r.region)) added++
             }
             renderSubIpList()
@@ -1203,9 +1203,12 @@ class MainActivity: AppCompatActivity() {
         return if (r.isNotEmpty() && r != "--") "$r-${entry.ip}" else entry.ip
     }
 
+    // v2.3.3：从测试结果加入只显示本轮成功结果里延迟最低的前10条
+    private fun topAddList(): List<IpResult> = lastSuccess.sortedBy { it.latencyMs }.take(10)
+
     // 测试结果旁的“加入订阅”按钮列表（成功结果每条一个按钮）
     private fun renderSubAddList() {
-        val q = lastSuccess
+        val q = topAddList()
         val key = q.joinToString("|") { "${it.ip}:${it.port}:${it.region}" } + "#" + subIps.joinToString("|") { it.ip.lowercase(Locale.US) }
         if (key == lastAddListKey) return
         lastAddListKey = key
