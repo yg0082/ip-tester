@@ -713,14 +713,12 @@ class MainActivity: AppCompatActivity() {
             renderSubAddList()
             Toast.makeText(this, "已加入 $added 个（去重后）", Toast.LENGTH_SHORT).show()
         }
-        // v1.4：一键清空订阅列表（只清订阅里的优选 IP，不动测试结果和输入）
+        // v1.4.4：一键清空“从测试结果加入”里显示的本次测试结果（只清 lastSuccess，不动订阅列表 subIps、不动测试结果输出框和输入框）
         findViewById<Button>(R.id.btnClearSub).setOnClickListener {
-            subIps.clear()
-            saveSubIps()
-            renderSubIpList()
+            lastSuccess = emptyList()
             lastAddListKey = ""
             renderSubAddList()
-            Toast.makeText(this, "订阅列表已清空", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "已清空本次测试结果", Toast.LENGTH_SHORT).show()
         }
         findViewById<Button>(R.id.btnAddManual).setOnClickListener {
             val text = subManualInput.text.toString()
@@ -739,6 +737,15 @@ class MainActivity: AppCompatActivity() {
             Toast.makeText(this, if (added > 0) "已加入 $added 个（去重后）" else "没加入：输入里没有合法的 IP", Toast.LENGTH_SHORT).show()
         }
         findViewById<Button>(R.id.btnUpdateSub).setOnClickListener { updateSubscription() }
+        // v1.4.4：一键清空订阅列表（只清订阅里的优选 IP，不动测试结果）。这个才是清订阅列表的按钮，位置在“更新订阅”旁边
+        findViewById<Button>(R.id.btnClearSubList).setOnClickListener {
+            subIps.clear()
+            saveSubIps()
+            renderSubIpList()
+            lastAddListKey = ""
+            renderSubAddList()
+            Toast.makeText(this, "订阅列表已清空", Toast.LENGTH_SHORT).show()
+        }
         findViewById<Button>(R.id.btnCopyClash).setOnClickListener {
             if (subClashUrl.isEmpty()) Toast.makeText(this, "还没创建订阅，先点更新订阅", Toast.LENGTH_SHORT).show()
             else copyText("Clash 订阅链接", subClashUrl)

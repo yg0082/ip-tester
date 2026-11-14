@@ -123,18 +123,18 @@
 
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="从测试结果加入" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
-                <!-- v1.4.3：从测试结果加入列表固定 20 行高（960dp），框内滚动 -->
-                <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="960dp"
+                <!-- v1.4.4：“从测试结果加入”列表从 20 行降为 10 行高（480dp），框内滚动 -->
+                <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="480dp"
                     android:layout_marginTop="6dp">
                     <LinearLayout android:id="@+id/subAddList" android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:orientation="vertical" />
                 </androidx.core.widget.NestedScrollView>
-                <!-- v1.4：一行两个按钮。左=把本次成功结果全部加入订阅（原功能），右=一键清空（只清订阅列表） -->
+                <!-- v1.4.4：一行两个按钮。左=全部加入订阅，右=一键清空（只清“从测试结果加入”里显示的本次测试结果，不动订阅列表） -->
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:orientation="horizontal" android:layout_marginTop="8dp">
                     <Button android:id="@+id/btnAddAllResults" android:layout_width="0dp" android:layout_height="48dp"
                         android:layout_weight="1" android:layout_marginEnd="4dp"
-                        android:background="@drawable/bg_button_outline" android:text="把本次成功结果全部加入订阅" android:textColor="#58A6FF"
+                        android:background="@drawable/bg_button_outline" android:text="全部加入订阅" android:textColor="#58A6FF"
                         android:textSize="12sp" />
                     <Button android:id="@+id/btnClearSub" android:layout_width="0dp" android:layout_height="48dp"
                         android:layout_weight="1" android:layout_marginStart="4dp"
@@ -164,9 +164,18 @@
                         android:orientation="vertical" />
                 </androidx.core.widget.NestedScrollView>
 
-                <Button android:id="@+id/btnUpdateSub" android:layout_width="match_parent" android:layout_height="56dp"
-                    android:background="@drawable/bg_button_primary" android:text="🔄 更新订阅" android:textColor="#FFFFFF"
-                    android:textSize="16sp" android:textStyle="bold" android:layout_marginTop="14dp" />
+                <!-- v1.4.4：一行两个按钮。左=更新订阅，右=一键清空（这个才是清订阅列表的：清订阅里的优选 IP） -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:layout_marginTop="14dp">
+                    <Button android:id="@+id/btnUpdateSub" android:layout_width="0dp" android:layout_height="56dp"
+                        android:layout_weight="1" android:layout_marginEnd="4dp"
+                        android:background="@drawable/bg_button_primary" android:text="🔄 更新订阅" android:textColor="#FFFFFF"
+                        android:textSize="16sp" android:textStyle="bold" />
+                    <Button android:id="@+id/btnClearSubList" android:layout_width="0dp" android:layout_height="56dp"
+                        android:layout_weight="1" android:layout_marginStart="4dp"
+                        android:background="@drawable/bg_button_danger" android:text="一键清空" android:textColor="#F85149"
+                        android:textSize="14sp" />
+                </LinearLayout>
                 <TextView android:id="@+id/subStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:background="@drawable/bg_status" android:padding="12dp" android:text="还没更新过订阅"
                     android:textColor="#58A6FF" android:textSize="14sp" android:layout_marginTop="10dp" />
