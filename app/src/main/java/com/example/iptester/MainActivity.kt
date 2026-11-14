@@ -113,7 +113,73 @@ class MainActivity: AppCompatActivity() {
     private lateinit var subSingboxLink: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        // v1.4.1 启动崩溃捕捉：任何未捕获的异常都先把堆栈存下来，下次启动时显示在屏幕上，方便定位闪退原因
+        Thread.setDefaultUncaughtExceptionHandler { _, e ->
+            try {
+                val sw = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(sw))
+                getSharedPreferences(PREFS_SUB, Context.MODE_PRIVATE).edit().putString("last_crash", sw.toString()).apply()
+            } catch (_: Exception) { }
+        }
+        val lastCrash = try {
+            getSharedPreferences(PREFS_SUB, Context.MODE_PRIVATE).getString("last_crash", "") ?: ""
+        } catch (_: Exception) { "" }
+        if (lastCrash.isNotBlank()) {
+            super.onCreate(savedInstanceState)
+            try { getSharedPreferences(PREFS_SUB, Context.MODE_PRIVATE).edit().remove("last_crash").apply() } catch (_: Exception) { }
+            showCrashScreen("上次启动崩溃的原因：\n\n$lastCrash")
+            return
+        }
+        try {
+            super.onCreate(savedInstanceState)
+            initMain()
+        } catch (e: Throwable) {
+            saveCrashTrace(e)
+            try { showCrashScreen("启动时出错：\n\n" + e.stackTraceToString()) } catch (_: Exception) { }
+        }
+    }
+
+    // 把崩溃堆栈存下来，下次启动时显示
+    private fun saveCrashTrace(e: Throwable) {
+        try {
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            getSharedPreferences(PREFS_SUB, Context.MODE_PRIVATE).edit().putString("last_crash", sw.toString()).apply()
+        } catch (_: Exception) { }
+    }
+
+    // 崩溃信息显示页：纯代码写的简单界面，不依赖 layout，出错时也能显示
+    private fun showCrashScreen(text: String) {
+        val root = LinearLayout(this)
+        root.orientation = LinearLayout.VERTICAL
+        root.setBackgroundColor(0xFF0D1117.toInt())
+        val scroll = ScrollView(this)
+        scroll.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        val tv = TextView(this)
+        tv.text = text + "\n\n请把这页截图发给小二。"
+        tv.textSize = 13f
+        tv.setTextColor(0xFFE6EDF3.toInt())
+        tv.setPadding(32, 32, 32, 32)
+        tv.setTextIsSelectable(true)
+        scroll.addView(tv)
+        val btn = Button(this)
+        btn.text = "知道了，进入应用（重试）"
+        btn.textSize = 15f
+        btn.setOnClickListener {
+            try { getSharedPreferences(PREFS_SUB, Context.MODE_PRIVATE).edit().remove("last_crash").apply() } catch (_: Exception) { }
+            try {
+                initMain()
+            } catch (e: Throwable) {
+                saveCrashTrace(e)
+                try { showCrashScreen("启动时出错：\n\n" + e.stackTraceToString()) } catch (_: Exception) { }
+            }
+        }
+        root.addView(scroll)
+        root.addView(btn)
+        setContentView(root)
+    }
+
+    private fun initMain() {
         setContentView(R.layout.activity_main)
         input = findViewById(R.id.input)
         output = findViewById(R.id.output)
