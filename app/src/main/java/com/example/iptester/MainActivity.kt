@@ -51,6 +51,8 @@ class MainActivity: AppCompatActivity() {
     companion object {
         const val CONCURRENCY = 10
         const val DOWNLOAD_BYTES = 10_000_000L
+        // 实测（v2.3.8）：下 30MB 算下载速度，量大更能体现真实速度
+        const val REAL_TEST_DOWNLOAD_BYTES = 30_000_000L
         // 通用路径下载：最多读 2MB 或 5 秒
         const val GENERIC_DOWNLOAD_MAX_BYTES = 2_000_000L
         const val GENERIC_DOWNLOAD_TIMEOUT_MS = 5000L
@@ -762,14 +764,14 @@ class MainActivity: AppCompatActivity() {
         val port = if (candidate.port > 0) candidate.port else 443
         val client = clientForIp(candidate.ip, "speed.cloudflare.com")
             .newBuilder()
-            .readTimeout(30, TimeUnit.SECONDS)
-            .callTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
             .build()
-        val url = if (port == 443) "https://speed.cloudflare.com/__down?bytes=$DOWNLOAD_BYTES"
-        else "https://speed.cloudflare.com:$port/__down?bytes=$DOWNLOAD_BYTES"
+        val url = if (port == 443) "https://speed.cloudflare.com/__down?bytes=$REAL_TEST_DOWNLOAD_BYTES"
+        else "https://speed.cloudflare.com:$port/__down?bytes=$REAL_TEST_DOWNLOAD_BYTES"
         diag("→ ${candidate.ip}:$port 连接 speed.cloudflare.com")
         return try {
-            withTimeout(30000L) {
+            withTimeout(60000L) {
                 val req = Request.Builder().url(url).header("User-Agent", "IPTester/1.0").build()
                 client.newCall(req).execute().use { resp ->
                     val code = resp.code
@@ -788,7 +790,7 @@ class MainActivity: AppCompatActivity() {
                             val t = System.currentTimeMillis()
                             body.byteStream().use { ins ->
                                 var n: Int
-                                while (ins.read(buf).also { n = it } != -1 && total < DOWNLOAD_BYTES) { total += n }
+                                while (ins.read(buf).also { n = it } != -1 && total < REAL_TEST_DOWNLOAD_BYTES) { total += n }
                             }
                             val dtMs = System.currentTimeMillis() - t
                             val dt = dtMs / 1000.0
