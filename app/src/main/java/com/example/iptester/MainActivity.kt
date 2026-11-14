@@ -790,19 +790,18 @@ class MainActivity: AppCompatActivity() {
         }
     }
 
-    // 单个端到端实测：经候选 IP（TLS SNI 用模板域名）连模板后端，VLESS 目标 www.google.com:443，
-    // 在 VLESS 通道上再做一次 TLS 握手、发 HTTPS 请求取 generate_204，跟客户端真实使用一致。
+    // 单个端到端实测：经候选 IP（TLS SNI 用模板域名）连模板后端，VLESS 握手后请求真实网页。
     // 成功返回带延迟的结果；失败返回失败原因（连接超时 / 握手失败 / 无响应 / HTTP 错误）。
-    // 延迟 = 从开始连接候选 IP 到收到 HTTPS 响应头的时间。
+    // 延迟 = 从开始连接候选 IP 到收到 HTTP 响应头的时间。
     private suspend fun testRealOne(candidate: IpResult, template: VlessTemplate): RealTestResult {
         val start = System.currentTimeMillis()
         // 实测连候选条目自己的端口（全端口，不只 443）；条目没有端口时才回退模板端口
         val port = if (candidate.port > 0) candidate.port else template.port
         val tlsHost = template.sni.ifEmpty { template.host.ifEmpty { template.server } }
         if (tlsHost.isEmpty()) return RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败")
+        // WS Host 头与生成配置保持一致：有 host 用 host，无 host 才用 sni（buildClashYaml/buildSingboxJson 同款 effHost）
+        val effHost = if (template.host.isNotEmpty()) template.host else template.sni
         val uuidBytes = uuidToBytes(template.uuid)
-            ?: return RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败")
-        val candidateAddr = try { InetAddress.getByName(candidate.ip) } catch (e: Exception) { null }
             ?: return RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败")
         val path = if (template.path.startsWith("/")) template.path else "/${template.path}"
         val url = "wss://$tlsHost:$port$path"
@@ -815,91 +814,21 @@ class MainActivity: AppCompatActivity() {
                     fun settle(r: RealTestResult) {
                         if (settled.compareAndSet(false, true) && cont.isActive) cont.resume(r, null)
                     }
-                    // ---- TLS 桥接：WS 二进制帧 <-> TLS 字节流 ----
-                    // onMessage 收到的帧（去掉 VLESS 响应头后）喂进这个队列，TLS 层从队列里读；
-                    // TLS 层写出的数据经 ws.send 以二进制帧发出。EOF_MARKER 是流结束标记
-                    //（队列不允许放 null，所以用一个空数组做标记、按引用判断）。
-                    val EOF_MARKER = ByteArray(0)
-                    val inbound = LinkedBlockingQueue<ByteArray>()
+                    val buf = ByteArrayOutputStream()
                     var headerParsed = false
-                    val headerBuf = ByteArrayOutputStream()
-                    val headerDone = CountDownLatch(1)
-                    val eofFed = AtomicBoolean(false)
-                    fun feedEof() {
-                        if (eofFed.compareAndSet(false, true)) {
-                            inbound.offer(EOF_MARKER)
-                            headerDone.countDown()
-                        }
-                    }
-                    // 队列式输入流：供 TLS 层读；流结束返回 -1
-                    val tlsInput = object : InputStream() {
-                        private var leftover: ByteArray? = null
-                        private var leftoverPos = 0
-                        override fun read(): Int {
-                            val one = ByteArray(1)
-                            return if (read(one, 0, 1) < 0) -1 else one[0].toInt() and 0xFF
-                        }
-                        override fun read(b: ByteArray, off: Int, len: Int): Int {
-                            while (true) {
-                                val cur = leftover
-                                if (cur != null) {
-                                    val n = minOf(len, cur.size - leftoverPos)
-                                    System.arraycopy(cur, leftoverPos, b, off, n)
-                                    leftoverPos += n
-                                    if (leftoverPos >= cur.size) leftover = null
-                                    return n
-                                }
-                                val chunk = try {
-                                    inbound.take()
-                                } catch (e: InterruptedException) {
-                                    return -1
-                                }
-                                if (chunk === EOF_MARKER) return -1
-                                leftover = chunk
-                                leftoverPos = 0
-                            }
-                        }
-                    }
-                    var wsRef: WebSocket? = null
-                    val tlsOutput = object : OutputStream() {
-                        override fun write(b: Int) = write(byteArrayOf(b.toByte()))
-                        override fun write(b: ByteArray, off: Int, len: Int) {
-                            val ws = wsRef ?: throw IOException("WebSocket 未连接")
-                            if (len > 0) ws.send(ByteString.of(*b.copyOfRange(off, off + len)))
-                        }
-                        override fun flush() {}
-                    }
-                    // TLS 层用的假 Socket：只提供字节流，不真正连网
-                    val closedFlag = AtomicBoolean(false)
-                    var soTimeoutMs = 0
-                    val wsSocket = object : Socket() {
-                        override fun getInputStream(): InputStream = tlsInput
-                        override fun getOutputStream(): OutputStream = tlsOutput
-                        override fun isConnected(): Boolean = true
-                        override fun isClosed(): Boolean = closedFlag.get()
-                        override fun close() { closedFlag.set(true) }
-                        override fun getInetAddress(): InetAddress = candidateAddr
-                        override fun getPort(): Int = 443
-                        override fun getLocalAddress(): InetAddress = candidateAddr
-                        override fun getLocalPort(): Int = 0
-                        override fun setSoTimeout(timeout: Int) { soTimeoutMs = timeout }
-                        override fun getSoTimeout(): Int = soTimeoutMs
-                        override fun setTcpNoDelay(on: Boolean) {}
-                        override fun getTcpNoDelay(): Boolean = false
-                    }
+                    var sentHttp = false
                     val listener = object : WebSocketListener() {
                         override fun onOpen(ws: WebSocket, response: Response) {
                             opened.set(true)
-                            wsRef = ws
                             try {
                                 // VLESS 握手：版本 0x00 + 16 字节 UUID + 附加长度 0x00 + 命令 0x01（TCP）
-                                // + 目标端口 443（大端）+ 地址类型 0x02（域名）+ 域名长度 + 域名
+                                // + 目标端口 80（大端）+ 地址类型 0x02（域名）+ 域名长度 + 域名
                                 val out = ByteArrayOutputStream()
                                 out.write(0x00)
                                 out.write(uuidBytes)
                                 out.write(0x00)
                                 out.write(0x01)
-                                out.write(0x01); out.write(0xBB)
+                                out.write(0x00); out.write(0x50)
                                 out.write(0x02)
                                 val domain = "www.google.com"
                                 out.write(domain.length)
@@ -907,16 +836,15 @@ class MainActivity: AppCompatActivity() {
                                 ws.send(ByteString.of(*out.toByteArray()))
                             } catch (e: Exception) {
                                 settle(RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败"))
-                                feedEof()
                                 try { ws.close(1000, null) } catch (_: Exception) {}
                             }
                         }
 
                         override fun onMessage(ws: WebSocket, bytes: ByteString) {
                             try {
+                                buf.write(bytes.toByteArray())
                                 if (!headerParsed) {
-                                    headerBuf.write(bytes.toByteArray())
-                                    val b = headerBuf.toByteArray()
+                                    val b = buf.toByteArray()
                                     if (b.size >= 2) {
                                         // VLESS 响应头：版本 1 字节 + 附加长度 1 字节 + 附加内容
                                         val addonLen = b[1].toInt() and 0xFF
@@ -924,22 +852,37 @@ class MainActivity: AppCompatActivity() {
                                         if (b.size >= headerLen) {
                                             if (b[0].toInt() != 0x00) {
                                                 settle(RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败"))
-                                                feedEof()
                                                 try { ws.close(1000, null) } catch (_: Exception) {}
                                                 return
                                             }
                                             headerParsed = true
                                             val rest = b.copyOfRange(headerLen, b.size)
-                                            if (rest.isNotEmpty()) inbound.offer(rest)
-                                            headerDone.countDown()
+                                            buf.reset()
+                                            buf.write(rest)
+                                            if (!sentHttp) {
+                                                sentHttp = true
+                                                ws.send(ByteString.of(*"GET /generate_204 HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8)))
+                                            }
                                         }
                                     }
-                                } else {
-                                    inbound.offer(bytes.toByteArray())
+                                }
+                                if (headerParsed) {
+                                    val text = String(buf.toByteArray(), Charsets.UTF_8)
+                                    val end = text.indexOf("\r\n\r\n")
+                                    if (end >= 0) {
+                                        val statusLine = text.substring(0, end).lineSequence().firstOrNull() ?: ""
+                                        val code = Regex("HTTP/\\S+\\s+(\\d{3})").find(statusLine)
+                                            ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                                        if (code != null && code in 200..399) {
+                                            settle(RealTestResult(candidate.ip, candidate.region, port, System.currentTimeMillis() - start, null))
+                                        } else {
+                                            settle(RealTestResult(candidate.ip, candidate.region, port, -1, "HTTP 错误"))
+                                        }
+                                        try { ws.close(1000, null) } catch (_: Exception) {}
+                                    }
                                 }
                             } catch (e: Exception) {
                                 settle(RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败"))
-                                feedEof()
                                 try { ws.close(1000, null) } catch (_: Exception) {}
                             }
                         }
@@ -951,72 +894,17 @@ class MainActivity: AppCompatActivity() {
                             } else {
                                 settle(RealTestResult(candidate.ip, candidate.region, port, -1, "无响应"))
                             }
-                            feedEof()
                         }
 
                         override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                             settle(RealTestResult(candidate.ip, candidate.region, port, -1, "无响应"))
-                            feedEof()
                         }
                     }
                     val ws = client.newWebSocket(
-                        Request.Builder().url(url).header("Host", tlsHost).header("User-Agent", "IPTester/1.0").build(),
+                        Request.Builder().url(url).header("Host", effHost.ifEmpty { tlsHost }).header("User-Agent", "IPTester/1.0").build(),
                         listener
                     )
-                    wsRef = ws
-                    cont.invokeOnCancellation {
-                        try { ws.close(1000, null) } catch (_: Exception) {}
-                        feedEof()
-                    }
-                    // ---- 在 VLESS 通道上做 TLS 握手，再发 HTTPS 请求 ----
-                    // 这段跑在 IO 线程上做阻塞读写；取消/超时时上面 invokeOnCancellation 会关 WS、
-                    // 喂 EOF，读端随即返回 -1，握手/读取抛错后由下面的 catch 收尾。
-                    try {
-                        headerDone.await()
-                        if (headerParsed) {
-                            val sslSocket = (SSLSocketFactory.getDefault() as SSLSocketFactory)
-                                .createSocket(wsSocket, "www.google.com", 443, true) as SSLSocket
-                            try {
-                                sslSocket.soTimeout = 15000
-                                sslSocket.startHandshake()
-                                val req = "GET /generate_204 HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n"
-                                val sslOut = sslSocket.outputStream
-                                sslOut.write(req.toByteArray(Charsets.UTF_8))
-                                sslOut.flush()
-                                val resp = ByteArrayOutputStream()
-                                val chunk = ByteArray(4096)
-                                var end = -1
-                                var text = ""
-                                while (true) {
-                                    val n = sslSocket.inputStream.read(chunk)
-                                    if (n < 0) break
-                                    resp.write(chunk, 0, n)
-                                    text = String(resp.toByteArray(), Charsets.UTF_8)
-                                    end = text.indexOf("\r\n\r\n")
-                                    if (end >= 0) break
-                                }
-                                if (end >= 0) {
-                                    val statusLine = text.substring(0, end).lineSequence().firstOrNull() ?: ""
-                                    val code = Regex("HTTP/\\S+\\s+(\\d{3})").find(statusLine)
-                                        ?.groupValues?.getOrNull(1)?.toIntOrNull()
-                                    if (code != null && code in 200..399) {
-                                        settle(RealTestResult(candidate.ip, candidate.region, port, System.currentTimeMillis() - start, null))
-                                    } else {
-                                        settle(RealTestResult(candidate.ip, candidate.region, port, -1, "HTTP 错误"))
-                                    }
-                                } else {
-                                    settle(RealTestResult(candidate.ip, candidate.region, port, -1, "无响应"))
-                                }
-                            } catch (e: Exception) {
-                                settle(RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败"))
-                            } finally {
-                                try { sslSocket.close() } catch (_: Exception) {}
-                            }
-                        }
-                    } catch (e: InterruptedException) {
-                        // 等 VLESS 响应头时被打断：交给外层超时/取消处理
-                    }
-                    try { ws.close(1000, null) } catch (_: Exception) {}
+                    cont.invokeOnCancellation { try { ws.close(1000, null) } catch (_: Exception) {} }
                 }
             }
         } catch (e: TimeoutCancellationException) {
