@@ -688,9 +688,9 @@ class MainActivity: AppCompatActivity() {
         return "--"
     }
 
-    // ============ 实测节点（v2.3.7） ============
+    // ============ 实测节点（v2.3.9） ============
     // 实测：取本轮 Cloudflare 结果和 IPv6 结果里延迟最低的前 20 名，逐个经候选 IP 下 Cloudflare
-    // 测速站（speed.cloudflare.com/__down）的 10MB 算 MB/s；单个超时 30 秒，最多 5 个并发。
+    // 测速站（speed.cloudflare.com/__down）的 30MB 算 MB/s；单个超时 60 秒，一次只测一个（独占带宽）。
     // 不连模板后端、不做握手——实测的意义就是下载速度（有没有、多少）。
     private fun startRealTest() {
         // Cloudflare 结果 + IPv6 结果（IPv6 走通用路径、isCloudflare 恒为 false，也要能实测）
@@ -708,7 +708,7 @@ class MainActivity: AppCompatActivity() {
         val total = targets.size
         realTestStatus.text = "实测中 0/$total"
         val job = scope.launch {
-            val sem = Semaphore(5)
+            val sem = Semaphore(1)
             val done = AtomicInteger(0)
             val deferreds = targets.map { r ->
                 async(Dispatchers.IO) {
@@ -757,9 +757,9 @@ class MainActivity: AppCompatActivity() {
         scope.launch { appendRealTestDiag(line) }
     }
 
-    // 单个实测（v2.3.7）：经候选 IP（TLS SNI 用 speed.cloudflare.com）下 Cloudflare 测速站的 10MB，算 MB/s。
+    // 单个实测（v2.3.9）：经候选 IP（TLS SNI 用 speed.cloudflare.com）下 Cloudflare 测速站的 30MB，算 MB/s。
     // 不连模板后端、不做握手。成功返回带下载速度的结果；失败返回失败原因（连接超时 / 无响应 / HTTP 错误）。
-    // latencyMs 为下载耗时（毫秒），speedMbps 为下载速度 MB/s。
+    // 遇 HTTP 429 限流等 3 秒重试一次。latencyMs 为下载耗时（毫秒），speedMbps 为下载速度 MB/s。
     private suspend fun testRealOne(candidate: IpResult): RealTestResult {
         val port = if (candidate.port > 0) candidate.port else 443
         val client = clientForIp(candidate.ip, "speed.cloudflare.com")
@@ -772,38 +772,52 @@ class MainActivity: AppCompatActivity() {
         diag("→ ${candidate.ip}:$port 连接 speed.cloudflare.com")
         return try {
             withTimeout(60000L) {
-                val req = Request.Builder().url(url).header("User-Agent", "IPTester/1.0").build()
-                client.newCall(req).execute().use { resp ->
-                    val code = resp.code
-                    diag("HTTP $code")
-                    if (code !in 200..399) {
-                        diag("✗ HTTP 错误：$code")
-                        RealTestResult(candidate.ip, candidate.region, port, -1, "HTTP 错误")
-                    } else {
-                        val body = resp.body
-                        if (body == null) {
-                            RealTestResult(candidate.ip, candidate.region, port, -1, "无响应")
+                var result: RealTestResult? = null
+                var retryAfter429 = false
+                var attempt = 0
+                while (result == null && attempt < 2) {
+                    attempt++
+                    if (retryAfter429) {
+                        kotlinx.coroutines.delay(3000)
+                        retryAfter429 = false
+                    }
+                    val req = Request.Builder().url(url).header("User-Agent", "IPTester/1.0").build()
+                    client.newCall(req).execute().use { resp ->
+                        val code = resp.code
+                        diag("HTTP $code")
+                        if (code == 429 && attempt < 2) {
+                            diag("限流，等 3 秒重试")
+                            retryAfter429 = true
+                        } else if (code !in 200..399) {
+                            diag("✗ HTTP 错误：$code")
+                            result = RealTestResult(candidate.ip, candidate.region, port, -1, "HTTP 错误")
                         } else {
-                            val buf = ByteArray(8192)
-                            var total = 0L
-                            // 计时从开始读数据算起，不算 TCP+TLS 握手和等首字节的时间（跟 downloadSpeedMbps 同款）
-                            val t = System.currentTimeMillis()
-                            body.byteStream().use { ins ->
-                                var n: Int
-                                while (ins.read(buf).also { n = it } != -1 && total < REAL_TEST_DOWNLOAD_BYTES) { total += n }
-                            }
-                            val dtMs = System.currentTimeMillis() - t
-                            val dt = dtMs / 1000.0
-                            if (dt > 0 && total > 0) {
-                                val speed = total / 1024.0 / 1024.0 / dt
-                                diag("已下 $total 字节，${"%.1f".format(Locale.US, speed)} MB/s")
-                                RealTestResult(candidate.ip, candidate.region, port, dtMs, null, speed)
+                            val body = resp.body
+                            if (body == null) {
+                                result = RealTestResult(candidate.ip, candidate.region, port, -1, "无响应")
                             } else {
-                                RealTestResult(candidate.ip, candidate.region, port, -1, "无响应")
+                                val buf = ByteArray(8192)
+                                var total = 0L
+                                // 计时从开始读数据算起，不算 TCP+TLS 握手和等首字节的时间（跟 downloadSpeedMbps 同款）
+                                val t = System.currentTimeMillis()
+                                body.byteStream().use { ins ->
+                                    var n: Int
+                                    while (ins.read(buf).also { n = it } != -1 && total < REAL_TEST_DOWNLOAD_BYTES) { total += n }
+                                }
+                                val dtMs = System.currentTimeMillis() - t
+                                val dt = dtMs / 1000.0
+                                if (dt > 0 && total > 0) {
+                                    val speed = total / 1024.0 / 1024.0 / dt
+                                    diag("已下 $total 字节，${"%.1f".format(Locale.US, speed)} MB/s")
+                                    result = RealTestResult(candidate.ip, candidate.region, port, dtMs, null, speed)
+                                } else {
+                                    result = RealTestResult(candidate.ip, candidate.region, port, -1, "无响应")
+                                }
                             }
                         }
                     }
                 }
+                result ?: RealTestResult(candidate.ip, candidate.region, port, -1, "无响应")
             }
         } catch (e: TimeoutCancellationException) {
             diag("✗ 连接超时：${e.javaClass.simpleName}")
