@@ -94,7 +94,6 @@ class MainActivity: AppCompatActivity() {
     // 实测节点（v2.1）状态
     private lateinit var realTestOutput: TextView
     private lateinit var realTestStatus: TextView
-    private lateinit var realTestDiag: TextView
     private var realTestResults: List<RealTestResult> = emptyList()
     private var realTestJob: Job? = null
     private val realTestCompleted = mutableListOf<RealTestResult>()
@@ -253,7 +252,6 @@ class MainActivity: AppCompatActivity() {
         // 实测节点（v2.1）
         realTestOutput = findViewById(R.id.realTestOutput)
         realTestStatus = findViewById(R.id.realTestStatus)
-        realTestDiag = findViewById(R.id.realTestDiag)
         findViewById<Button>(R.id.btnRealTest).setOnClickListener { startRealTest() }
         findViewById<Button>(R.id.btnAddRealSuccess).setOnClickListener {
             if (realTestResults.isEmpty()) {
@@ -704,7 +702,6 @@ class MainActivity: AppCompatActivity() {
         realTestResults = emptyList()
         realTestCompleted.clear()
         realTestOutput.text = ""
-        realTestDiag.text = ""
         val total = targets.size
         realTestStatus.text = "实测中 0/$total"
         val job = scope.launch {
@@ -746,17 +743,6 @@ class MainActivity: AppCompatActivity() {
         realTestOutput.text = if (cur.isEmpty()) line else "$cur\n$line"
     }
 
-    // 实测诊断日志（v2.3.2）：只记事件，不记模板链接、UUID、WS 路径、字节内容。
-    // 只能在主线程调用，调用方用 diag() 投递。
-    private fun appendRealTestDiag(line: String) {
-        val cur = realTestDiag.text.toString()
-        realTestDiag.text = if (cur.isEmpty()) line else "$cur\n$line"
-    }
-
-    private fun diag(line: String) {
-        scope.launch { appendRealTestDiag(line) }
-    }
-
     // 单个实测（v2.3.9）：经候选 IP（TLS SNI 用 speed.cloudflare.com）下 Cloudflare 测速站的 30MB，算 MB/s。
     // 不连模板后端、不做握手。成功返回带下载速度的结果；失败返回失败原因（连接超时 / 无响应 / HTTP 错误）。
     // 遇 HTTP 429 限流等 3 秒重试一次。latencyMs 为下载耗时（毫秒），speedMbps 为下载速度 MB/s。
@@ -769,7 +755,6 @@ class MainActivity: AppCompatActivity() {
             .build()
         val url = if (port == 443) "https://speed.cloudflare.com/__down?bytes=$REAL_TEST_DOWNLOAD_BYTES"
         else "https://speed.cloudflare.com:$port/__down?bytes=$REAL_TEST_DOWNLOAD_BYTES"
-        diag("→ ${candidate.ip}:$port 连接 speed.cloudflare.com")
         return try {
             withTimeout(60000L) {
                 var result: RealTestResult? = null
@@ -784,12 +769,9 @@ class MainActivity: AppCompatActivity() {
                     val req = Request.Builder().url(url).header("User-Agent", "IPTester/1.0").build()
                     client.newCall(req).execute().use { resp ->
                         val code = resp.code
-                        diag("HTTP $code")
                         if (code == 429 && attempt < 2) {
-                            diag("限流，等 3 秒重试")
                             retryAfter429 = true
                         } else if (code !in 200..399) {
-                            diag("✗ HTTP 错误：$code")
                             result = RealTestResult(candidate.ip, candidate.region, port, -1, "HTTP 错误")
                         } else {
                             val body = resp.body
@@ -808,7 +790,6 @@ class MainActivity: AppCompatActivity() {
                                 val dt = dtMs / 1000.0
                                 if (dt > 0 && total > 0) {
                                     val speed = total / 1024.0 / 1024.0 / dt
-                                    diag("已下 $total 字节，${"%.1f".format(Locale.US, speed)} MB/s")
                                     result = RealTestResult(candidate.ip, candidate.region, port, dtMs, null, speed)
                                 } else {
                                     result = RealTestResult(candidate.ip, candidate.region, port, -1, "无响应")
@@ -820,13 +801,11 @@ class MainActivity: AppCompatActivity() {
                 result ?: RealTestResult(candidate.ip, candidate.region, port, -1, "无响应")
             }
         } catch (e: TimeoutCancellationException) {
-            diag("✗ 连接超时：${e.javaClass.simpleName}")
             RealTestResult(candidate.ip, candidate.region, port, -1, "连接超时")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             val reason = if (e is java.net.SocketTimeoutException || e is java.io.InterruptedIOException) "连接超时" else "无响应"
-            diag("✗ $reason：${e.javaClass.simpleName}")
             RealTestResult(candidate.ip, candidate.region, port, -1, reason)
         }
     }
