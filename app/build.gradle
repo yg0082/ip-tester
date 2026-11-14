@@ -8,7 +8,7 @@ def ksPath = System.getenv("IPTESTER_KEYSTORE_PATH")
 android {
     namespace 'com.example.iptester'
     compileSdk 34
-    defaultConfig { applicationId "com.example.iptester"; minSdk 24; targetSdk 34; versionCode 9; versionName "1.4.2" }
+    defaultConfig { applicationId "com.example.iptester"; minSdk 24; targetSdk 34; versionCode 10; versionName "1.4.3" }
     signingConfigs {
         fixed {
             storeFile file(ksPath ?: "nonexistent.keystore")

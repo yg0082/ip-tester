@@ -1,188 +1,194 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v1.4：横向两大板块。左=测IP，右=优选订阅，各占一半，各自上下滚动，互不干扰。深色面板（GitHub Dark 风格）。 -->
+<!-- v1.4.3：标签页切换。顶部两个标签（测IP / 优选订阅），一次只显示一个板块、全屏宽度，另一个完全隐藏。深色面板（GitHub Dark 风格）。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:background="#0D1117" android:orientation="vertical">
 
-    <!-- 顶部 slim 通栏标题头（深色） -->
+    <!-- 顶部标签栏：两个标签尺寸、字号完全一致，图标跟着字号走所以大小也一致 -->
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:background="#161B22" android:orientation="vertical"
-        android:paddingLeft="16dp" android:paddingRight="16dp" android:paddingTop="10dp" android:paddingBottom="10dp">
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="🌐 IP 批量测试" android:textColor="#FFFFFF" android:textSize="20sp" android:textStyle="bold" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="延迟 · 下载速度，IP 和域名都能测 · 结果只保存在本机" android:textColor="#8B949E" android:textSize="12sp" android:layout_marginTop="2dp" />
+        android:background="#161B22" android:orientation="horizontal" android:padding="8dp">
+        <Button android:id="@+id/btnTabTest" android:layout_width="0dp" android:layout_height="48dp"
+            android:layout_weight="1" android:layout_marginEnd="4dp"
+            android:background="@drawable/bg_button_primary" android:text="🌐 测IP" android:textColor="#FFFFFF"
+            android:textSize="16sp" android:textStyle="bold" />
+        <Button android:id="@+id/btnTabSub" android:layout_width="0dp" android:layout_height="48dp"
+            android:layout_weight="1" android:layout_marginStart="4dp"
+            android:background="@drawable/bg_card" android:text="📡 优选订阅" android:textColor="#8B949E"
+            android:textSize="16sp" android:textStyle="bold" />
     </LinearLayout>
 
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
-        android:orientation="horizontal" android:padding="8dp">
+    <!-- ============ 面板一：测IP（默认显示） ============ -->
+    <androidx.core.widget.NestedScrollView android:id="@+id/panelTest" android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:fillViewport="true">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
 
-        <!-- ============ 左边：测IP ============ -->
-        <androidx.core.widget.NestedScrollView android:layout_width="0dp" android:layout_height="match_parent"
-            android:layout_weight="1" android:layout_marginEnd="4dp" android:fillViewport="true">
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="4dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="延迟 · 下载速度，IP 和域名都能测 · 结果只保存在本机" android:textColor="#8B949E" android:textSize="12sp"
+                android:layout_marginBottom="8dp" />
 
-                <!-- 输入卡片 -->
+            <!-- 输入卡片 -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:background="@drawable/bg_card" android:orientation="vertical" android:padding="12dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="目标列表" android:textSize="16sp" android:textStyle="bold" android:textColor="#E6EDF3" />
+                <!-- v1.4.3：目标列表输入框固定 30 行高，超出的在框内滚动 -->
+                <EditText android:id="@+id/input" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:background="@drawable/bg_input" android:gravity="top" android:padding="12dp"
+                    android:hint="例如：&#10;8.219.0.80&#10;8.219.0.80:443&#10;example.com&#10;example.com:8080"
+                    android:textColor="#E6EDF3" android:textColorHint="#8B949E"
+                    android:inputType="textMultiLine" android:textSize="14sp" android:layout_marginTop="10dp"
+                    android:minLines="30" android:maxLines="30" android:scrollbars="vertical" android:overScrollMode="never" />
+                <TextView android:id="@+id/count" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="已输入 0 / 200 条" android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="8dp" />
+            </LinearLayout>
+
+            <Button android:id="@+id/btnTest" android:layout_width="match_parent" android:layout_height="56dp"
+                android:background="@drawable/bg_button_primary" android:text="▶  开始测试" android:textColor="#FFFFFF"
+                android:textSize="16sp" android:textStyle="bold" android:layout_marginTop="12dp" />
+            <Button android:id="@+id/btnPause" android:layout_width="match_parent" android:layout_height="48dp"
+                android:background="@drawable/bg_button_danger" android:text="暂停" android:textColor="#F85149"
+                android:textSize="14sp" android:layout_marginTop="8dp" />
+            <Button android:id="@+id/btnExport" android:layout_width="match_parent" android:layout_height="48dp"
+                android:background="@drawable/bg_button_outline" android:text="导出结果（仅成功目标）" android:textColor="#58A6FF"
+                android:textSize="14sp" android:layout_marginTop="8dp" />
+            <Button android:id="@+id/btnClear" android:layout_width="match_parent" android:layout_height="48dp"
+                android:background="@drawable/bg_button_danger" android:text="一键清空" android:textColor="#F85149"
+                android:textSize="14sp" android:layout_marginTop="8dp" />
+
+            <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:background="@drawable/bg_status" android:padding="12dp" android:text="还没开始测试"
+                android:textColor="#58A6FF" android:textSize="14sp" android:layout_marginTop="12dp" />
+
+            <!-- 结果卡片：结果框固定 10 行，框内滚动 -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:background="@drawable/bg_card" android:orientation="vertical"
+                android:padding="12dp" android:layout_marginTop="12dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="📊 测试结果（Cloudflare 按地区分组 · 其他按延迟排序）" android:textSize="15sp" android:textStyle="bold" android:textColor="#E6EDF3" />
+                <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="210dp"
+                    android:layout_marginTop="10dp">
+                    <TextView android:id="@+id/output" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:text="结果会显示在这里" android:textColor="#E6EDF3" android:textSize="14sp"
+                        android:lineSpacingExtra="4dp" android:textIsSelectable="true" />
+                </androidx.core.widget.NestedScrollView>
+            </LinearLayout>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="提示：每行一个 IP 或域名，可带端口（默认 443）。Cloudflare 的 IP 用域名握手测 trace 取延迟和地区，下载照常测；其他目标直接 TCP 测延迟，能连上就算成功，下载能测到就显示，测不到显示 --；结果分 Cloudflare、其他两块显示，只显示和导出成功的。"
+                android:textColor="#8B949E" android:textSize="12sp" android:layout_marginTop="12dp" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- ============ 面板二：优选订阅（默认隐藏） ============ -->
+    <androidx.core.widget.NestedScrollView android:id="@+id/panelSub" android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:fillViewport="true" android:visibility="gone">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:background="@drawable/bg_card" android:orientation="vertical" android:padding="12dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="把测好的优选 IP 变成一条固定不变的订阅链接，填进客户端一次，一直能用。模板、令牌、IP 列表只保存在本机，不会上传。"
+                    android:textColor="#8B949E" android:textSize="13sp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="节点模板" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
+                <!-- v1.4：单行输入框，值太长截断显示 …，长按可复制 -->
+                <EditText android:id="@+id/subTemplateInput" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:background="@drawable/bg_input" android:padding="12dp"
+                    android:hint="粘贴一条 vless:// 节点链接（VLESS WS+TLS）"
+                    android:textColor="#E6EDF3" android:textColorHint="#8B949E"
+                    android:inputType="text" android:singleLine="true" android:maxLines="1" android:ellipsize="end"
+                    android:textSize="13sp" android:layout_marginTop="6dp" />
+                <Button android:id="@+id/btnSaveTemplate" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="保存模板" android:textColor="#58A6FF"
+                    android:textSize="14sp" android:layout_marginTop="8dp" />
+                <TextView android:id="@+id/subTemplateStatus" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="还没保存模板" android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="6dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="GitHub 令牌" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
+                <!-- v1.4：单行输入框，值太长截断显示 …，长按可复制 -->
+                <EditText android:id="@+id/subTokenInput" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:background="@drawable/bg_input" android:padding="12dp"
+                    android:hint="粘贴 GitHub Personal Access Token"
+                    android:textColor="#E6EDF3" android:textColorHint="#8B949E"
+                    android:inputType="text" android:singleLine="true" android:maxLines="1" android:ellipsize="end"
+                    android:textSize="13sp" android:layout_marginTop="6dp" />
+                <Button android:id="@+id/btnSaveToken" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="保存令牌" android:textColor="#58A6FF"
+                    android:textSize="14sp" android:layout_marginTop="8dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="令牌获取：GitHub → Settings → Developer settings → Personal access tokens (classic) → 新建，只勾 gist 权限。令牌只存本机。"
+                    android:textColor="#8B949E" android:textSize="12sp" android:layout_marginTop="6dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="从测试结果加入" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
+                <!-- v1.4.3：从测试结果加入列表固定 20 行高（960dp），框内滚动 -->
+                <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="960dp"
+                    android:layout_marginTop="6dp">
+                    <LinearLayout android:id="@+id/subAddList" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </androidx.core.widget.NestedScrollView>
+                <!-- v1.4：一行两个按钮。左=把本次成功结果全部加入订阅（原功能），右=一键清空（只清订阅列表） -->
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:background="@drawable/bg_card" android:orientation="vertical" android:padding="12dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="目标列表" android:textSize="16sp" android:textStyle="bold" android:textColor="#E6EDF3" />
-                    <EditText android:id="@+id/input" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:minHeight="200dp" android:background="@drawable/bg_input" android:gravity="top" android:padding="12dp"
-                        android:hint="例如：&#10;8.219.0.80&#10;8.219.0.80:443&#10;example.com&#10;example.com:8080"
-                        android:textColor="#E6EDF3" android:textColorHint="#8B949E"
-                        android:inputType="textMultiLine" android:textSize="14sp" android:layout_marginTop="10dp"
-                        android:scrollbars="none" android:overScrollMode="never" android:isScrollContainer="false" />
-                    <TextView android:id="@+id/count" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="已输入 0 / 200 条" android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="8dp" />
-                </LinearLayout>
-
-                <Button android:id="@+id/btnTest" android:layout_width="match_parent" android:layout_height="56dp"
-                    android:background="@drawable/bg_button_primary" android:text="▶  开始测试" android:textColor="#FFFFFF"
-                    android:textSize="16sp" android:textStyle="bold" android:layout_marginTop="12dp" />
-                <Button android:id="@+id/btnPause" android:layout_width="match_parent" android:layout_height="48dp"
-                    android:background="@drawable/bg_button_danger" android:text="暂停" android:textColor="#F85149"
-                    android:textSize="14sp" android:layout_marginTop="8dp" />
-                <Button android:id="@+id/btnExport" android:layout_width="match_parent" android:layout_height="48dp"
-                    android:background="@drawable/bg_button_outline" android:text="导出结果（仅成功目标）" android:textColor="#58A6FF"
-                    android:textSize="14sp" android:layout_marginTop="8dp" />
-                <Button android:id="@+id/btnClear" android:layout_width="match_parent" android:layout_height="48dp"
-                    android:background="@drawable/bg_button_danger" android:text="一键清空" android:textColor="#F85149"
-                    android:textSize="14sp" android:layout_marginTop="8dp" />
-
-                <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:background="@drawable/bg_status" android:padding="12dp" android:text="还没开始测试"
-                    android:textColor="#58A6FF" android:textSize="14sp" android:layout_marginTop="12dp" />
-
-                <!-- 结果卡片：结果框固定 10 行，框内滚动 -->
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:background="@drawable/bg_card" android:orientation="vertical"
-                    android:padding="12dp" android:layout_marginTop="12dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="📊 测试结果（Cloudflare 按地区分组 · 其他按延迟排序）" android:textSize="15sp" android:textStyle="bold" android:textColor="#E6EDF3" />
-                    <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="210dp"
-                        android:layout_marginTop="10dp">
-                        <TextView android:id="@+id/output" android:layout_width="match_parent" android:layout_height="wrap_content"
-                            android:text="结果会显示在这里" android:textColor="#E6EDF3" android:textSize="14sp"
-                            android:lineSpacingExtra="4dp" android:textIsSelectable="true" />
-                    </androidx.core.widget.NestedScrollView>
+                    android:orientation="horizontal" android:layout_marginTop="8dp">
+                    <Button android:id="@+id/btnAddAllResults" android:layout_width="0dp" android:layout_height="48dp"
+                        android:layout_weight="1" android:layout_marginEnd="4dp"
+                        android:background="@drawable/bg_button_outline" android:text="把本次成功结果全部加入订阅" android:textColor="#58A6FF"
+                        android:textSize="12sp" />
+                    <Button android:id="@+id/btnClearSub" android:layout_width="0dp" android:layout_height="48dp"
+                        android:layout_weight="1" android:layout_marginStart="4dp"
+                        android:background="@drawable/bg_button_danger" android:text="一键清空" android:textColor="#F85149"
+                        android:textSize="12sp" />
                 </LinearLayout>
 
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="提示：每行一个 IP 或域名，可带端口（默认 443）。Cloudflare 的 IP 用域名握手测 trace 取延迟和地区，下载照常测；其他目标直接 TCP 测延迟，能连上就算成功，下载能测到就显示，测不到显示 --；结果分 Cloudflare、其他两块显示，只显示和导出成功的。"
-                    android:textColor="#8B949E" android:textSize="12sp" android:layout_marginTop="12dp" />
+                    android:text="手动加入优选 IP" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
+                <EditText android:id="@+id/subManualInput" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:minHeight="64dp" android:background="@drawable/bg_input" android:gravity="top" android:padding="12dp"
+                    android:hint="每行一个 IP 或 IP:端口" android:inputType="textMultiLine"
+                    android:textColor="#E6EDF3" android:textColorHint="#8B949E"
+                    android:textSize="13sp" android:layout_marginTop="6dp" />
+                <Button android:id="@+id/btnAddManual" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="加入订阅列表" android:textColor="#58A6FF"
+                    android:textSize="14sp" android:layout_marginTop="8dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="订阅里的优选 IP" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
+                <TextView android:id="@+id/subIpCount" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="共 0 个" android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="4dp" />
+                <!-- v1.4：订阅 IP 列表固定 10 行高度，框内滚动（v1.4.3 保持 300dp 不动） -->
+                <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="300dp"
+                    android:layout_marginTop="6dp">
+                    <LinearLayout android:id="@+id/subIpList" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </androidx.core.widget.NestedScrollView>
+
+                <Button android:id="@+id/btnUpdateSub" android:layout_width="match_parent" android:layout_height="56dp"
+                    android:background="@drawable/bg_button_primary" android:text="🔄 更新订阅" android:textColor="#FFFFFF"
+                    android:textSize="16sp" android:textStyle="bold" android:layout_marginTop="14dp" />
+                <TextView android:id="@+id/subStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:background="@drawable/bg_status" android:padding="12dp" android:text="还没更新过订阅"
+                    android:textColor="#58A6FF" android:textSize="14sp" android:layout_marginTop="10dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="固定订阅链接（永不换，只换里面的节点）" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
+                <TextView android:id="@+id/subClashLink" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="还没创建订阅（Clash）"
+                    android:textColor="#58A6FF" android:textSize="13sp" android:textIsSelectable="true" android:layout_marginTop="6dp" />
+                <Button android:id="@+id/btnCopyClash" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="复制 Clash 订阅链接" android:textColor="#58A6FF"
+                    android:textSize="13sp" android:layout_marginTop="8dp" />
+                <TextView android:id="@+id/subSingboxLink" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="还没创建订阅（sing-box）"
+                    android:textColor="#58A6FF" android:textSize="13sp" android:textIsSelectable="true" android:layout_marginTop="10dp" />
+                <Button android:id="@+id/btnCopySingbox" android:layout_width="match_parent" android:layout_height="48dp"
+                    android:background="@drawable/bg_button_outline" android:text="复制 sing-box 订阅链接" android:textColor="#58A6FF"
+                    android:textSize="13sp" android:layout_marginTop="8dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="节点端口、SNI 等全部取自模板，只换服务器地址；SNI 保持模板域名不变。"
+                    android:textColor="#8B949E" android:textSize="12sp" android:layout_marginTop="10dp" />
             </LinearLayout>
-        </androidx.core.widget.NestedScrollView>
-
-        <!-- ============ 右边：优选订阅 ============ -->
-        <androidx.core.widget.NestedScrollView android:layout_width="0dp" android:layout_height="match_parent"
-            android:layout_weight="1" android:layout_marginStart="4dp" android:fillViewport="true">
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="4dp">
-
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:background="@drawable/bg_card" android:orientation="vertical" android:padding="12dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="📡 优选订阅" android:textSize="16sp" android:textStyle="bold" android:textColor="#E6EDF3" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="把测好的优选 IP 变成一条固定不变的订阅链接，填进客户端一次，一直能用。模板、令牌、IP 列表只保存在本机，不会上传。"
-                        android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="6dp" />
-
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="节点模板" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
-                    <!-- v1.4：单行输入框，值太长截断显示 …，长按可复制 -->
-                    <EditText android:id="@+id/subTemplateInput" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:background="@drawable/bg_input" android:padding="12dp"
-                        android:hint="粘贴一条 vless:// 节点链接（VLESS WS+TLS）"
-                        android:textColor="#E6EDF3" android:textColorHint="#8B949E"
-                        android:inputType="text" android:singleLine="true" android:maxLines="1" android:ellipsize="end"
-                        android:textSize="13sp" android:layout_marginTop="6dp" />
-                    <Button android:id="@+id/btnSaveTemplate" android:layout_width="match_parent" android:layout_height="48dp"
-                        android:background="@drawable/bg_button_outline" android:text="保存模板" android:textColor="#58A6FF"
-                        android:textSize="14sp" android:layout_marginTop="8dp" />
-                    <TextView android:id="@+id/subTemplateStatus" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="还没保存模板" android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="6dp" />
-
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="GitHub 令牌" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
-                    <!-- v1.4：单行输入框，值太长截断显示 …，长按可复制 -->
-                    <EditText android:id="@+id/subTokenInput" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:background="@drawable/bg_input" android:padding="12dp"
-                        android:hint="粘贴 GitHub Personal Access Token"
-                        android:textColor="#E6EDF3" android:textColorHint="#8B949E"
-                        android:inputType="text" android:singleLine="true" android:maxLines="1" android:ellipsize="end"
-                        android:textSize="13sp" android:layout_marginTop="6dp" />
-                    <Button android:id="@+id/btnSaveToken" android:layout_width="match_parent" android:layout_height="48dp"
-                        android:background="@drawable/bg_button_outline" android:text="保存令牌" android:textColor="#58A6FF"
-                        android:textSize="14sp" android:layout_marginTop="8dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="令牌获取：GitHub → Settings → Developer settings → Personal access tokens (classic) → 新建，只勾 gist 权限。令牌只存本机。"
-                        android:textColor="#8B949E" android:textSize="12sp" android:layout_marginTop="6dp" />
-
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="从测试结果加入" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
-                    <LinearLayout android:id="@+id/subAddList" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:orientation="vertical" android:layout_marginTop="6dp" />
-                    <!-- v1.4：一行两个按钮。左=把本次成功结果全部加入订阅（原功能），右=一键清空（只清订阅列表） -->
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:orientation="horizontal" android:layout_marginTop="8dp">
-                        <Button android:id="@+id/btnAddAllResults" android:layout_width="0dp" android:layout_height="48dp"
-                            android:layout_weight="1" android:layout_marginEnd="4dp"
-                            android:background="@drawable/bg_button_outline" android:text="把本次成功结果全部加入订阅" android:textColor="#58A6FF"
-                            android:textSize="12sp" />
-                        <Button android:id="@+id/btnClearSub" android:layout_width="0dp" android:layout_height="48dp"
-                            android:layout_weight="1" android:layout_marginStart="4dp"
-                            android:background="@drawable/bg_button_danger" android:text="一键清空" android:textColor="#F85149"
-                            android:textSize="12sp" />
-                    </LinearLayout>
-
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="手动加入优选 IP" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
-                    <EditText android:id="@+id/subManualInput" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:minHeight="64dp" android:background="@drawable/bg_input" android:gravity="top" android:padding="12dp"
-                        android:hint="每行一个 IP 或 IP:端口" android:inputType="textMultiLine"
-                        android:textColor="#E6EDF3" android:textColorHint="#8B949E"
-                        android:textSize="13sp" android:layout_marginTop="6dp" />
-                    <Button android:id="@+id/btnAddManual" android:layout_width="match_parent" android:layout_height="48dp"
-                        android:background="@drawable/bg_button_outline" android:text="加入订阅列表" android:textColor="#58A6FF"
-                        android:textSize="14sp" android:layout_marginTop="8dp" />
-
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="订阅里的优选 IP" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
-                    <TextView android:id="@+id/subIpCount" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="共 0 个" android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="4dp" />
-                    <!-- v1.4：订阅 IP 列表固定 10 行高度，框内滚动 -->
-                    <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="300dp"
-                        android:layout_marginTop="6dp">
-                        <LinearLayout android:id="@+id/subIpList" android:layout_width="match_parent" android:layout_height="wrap_content"
-                            android:orientation="vertical" />
-                    </androidx.core.widget.NestedScrollView>
-
-                    <Button android:id="@+id/btnUpdateSub" android:layout_width="match_parent" android:layout_height="56dp"
-                        android:background="@drawable/bg_button_primary" android:text="🔄 更新订阅" android:textColor="#FFFFFF"
-                        android:textSize="16sp" android:textStyle="bold" android:layout_marginTop="14dp" />
-                    <TextView android:id="@+id/subStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:background="@drawable/bg_status" android:padding="12dp" android:text="还没更新过订阅"
-                        android:textColor="#58A6FF" android:textSize="14sp" android:layout_marginTop="10dp" />
-
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="固定订阅链接（永不换，只换里面的节点）" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
-                    <TextView android:id="@+id/subClashLink" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:text="还没创建订阅（Clash）"
-                        android:textColor="#58A6FF" android:textSize="13sp" android:textIsSelectable="true" android:layout_marginTop="6dp" />
-                    <Button android:id="@+id/btnCopyClash" android:layout_width="match_parent" android:layout_height="48dp"
-                        android:background="@drawable/bg_button_outline" android:text="复制 Clash 订阅链接" android:textColor="#58A6FF"
-                        android:textSize="13sp" android:layout_marginTop="8dp" />
-                    <TextView android:id="@+id/subSingboxLink" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:text="还没创建订阅（sing-box）"
-                        android:textColor="#58A6FF" android:textSize="13sp" android:textIsSelectable="true" android:layout_marginTop="10dp" />
-                    <Button android:id="@+id/btnCopySingbox" android:layout_width="match_parent" android:layout_height="48dp"
-                        android:background="@drawable/bg_button_outline" android:text="复制 sing-box 订阅链接" android:textColor="#58A6FF"
-                        android:textSize="13sp" android:layout_marginTop="8dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="节点端口、SNI 等全部取自模板，只换服务器地址；SNI 保持模板域名不变。"
-                        android:textColor="#8B949E" android:textSize="12sp" android:layout_marginTop="10dp" />
-                </LinearLayout>
-            </LinearLayout>
-        </androidx.core.widget.NestedScrollView>
-    </LinearLayout>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 </LinearLayout>

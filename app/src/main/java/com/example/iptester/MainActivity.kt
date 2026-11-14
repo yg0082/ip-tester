@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.*
@@ -185,6 +186,27 @@ class MainActivity: AppCompatActivity() {
         output = findViewById(R.id.output)
         status = findViewById(R.id.status)
         count = findViewById(R.id.count)
+        // v1.4.3：标签页切换（测IP / 优选订阅），一次只显示一个板块，全屏宽度
+        val tabTest = findViewById<Button>(R.id.btnTabTest)
+        val tabSub = findViewById<Button>(R.id.btnTabSub)
+        val panelTest = findViewById<androidx.core.widget.NestedScrollView>(R.id.panelTest)
+        val panelSub = findViewById<androidx.core.widget.NestedScrollView>(R.id.panelSub)
+        fun showTab(test: Boolean) {
+            panelTest.visibility = if (test) View.VISIBLE else View.GONE
+            panelSub.visibility = if (test) View.GONE else View.VISIBLE
+            tabTest.setBackgroundResource(if (test) R.drawable.bg_button_primary else R.drawable.bg_card)
+            tabSub.setBackgroundResource(if (test) R.drawable.bg_card else R.drawable.bg_button_primary)
+            tabTest.setTextColor(if (test) 0xFFFFFFFF.toInt() else 0xFF8B949E.toInt())
+            tabSub.setTextColor(if (test) 0xFF8B949E.toInt() else 0xFFFFFFFF.toInt())
+        }
+        tabTest.setOnClickListener { showTab(true) }
+        tabSub.setOnClickListener { showTab(false) }
+        showTab(true)
+        // v1.4.3：目标列表框内滚动——触摸时不让外层面板抢走滑动事件
+        input.setOnTouchListener { v, _ ->
+            v.parent.requestDisallowInterceptTouchEvent(true)
+            false
+        }
         input.addTextChangedListener(object: TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
