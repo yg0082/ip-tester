@@ -224,8 +224,8 @@ class MainActivity: AppCompatActivity() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
                 val n = s.toString().lines().count { parseTarget(it.trim()) != null }
-                count.text = "已输入 $n / 1500 条"
-                count.setTextColor(if (n > 1500) 0xFFF85149.toInt() else 0xFF8B949E.toInt())
+                count.text = "已输入 $n / 2000 条"
+                count.setTextColor(if (n > 2000) 0xFFF85149.toInt() else 0xFF8B949E.toInt())
             }
         })
         findViewById<Button>(R.id.btnTest).setOnClickListener { startTest()}
@@ -378,10 +378,10 @@ class MainActivity: AppCompatActivity() {
         lastSuccess = emptyList()
         val all = input.text.toString().lines().map { it.trim() }.mapNotNull { parseTarget(it) }
         if (all.isEmpty()) { Toast.makeText(this, "请先输入 IP 或域名，每行一个（可带端口，默认 443）", Toast.LENGTH_SHORT).show(); return }
-        val limited = all.size > 1500
-        val targets = if (limited) all.take(1500) else all
+        val limited = all.size > 2000
+        val targets = if (limited) all.take(2000) else all
         totalToTest = targets.size
-        limitedNote = if (limited) "（输入超过 1500 条，仅测试前 1500 条）" else ""
+        limitedNote = if (limited) "（输入超过 2000 条，仅测试前 2000 条）" else ""
         status.text = "正在测试：${targets.firstOrNull()?.host ?: ""}（已完成 0/${targets.size}）"
         output.text = ""
         val job = scope.launch {

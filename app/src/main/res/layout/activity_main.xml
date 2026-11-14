@@ -39,7 +39,7 @@
                     android:inputType="textMultiLine" android:textSize="14sp" android:layout_marginTop="10dp"
                     android:minLines="30" android:maxLines="30" android:scrollbars="vertical" android:overScrollMode="never" />
                 <TextView android:id="@+id/count" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="已输入 0 / 1500 条" android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="8dp" />
+                    android:text="已输入 0 / 2000 条" android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="8dp" />
             </LinearLayout>
 
             <Button android:id="@+id/btnTest" android:layout_width="match_parent" android:layout_height="56dp"
