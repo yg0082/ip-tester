@@ -105,6 +105,7 @@ class MainActivity: AppCompatActivity() {
     // 实测节点（v2.1）状态
     private lateinit var realTestOutput: TextView
     private lateinit var realTestStatus: TextView
+    private lateinit var realTestDiag: TextView
     private var realTestResults: List<RealTestResult> = emptyList()
     private var realTestJob: Job? = null
     private val realTestCompleted = mutableListOf<RealTestResult>()
@@ -263,6 +264,7 @@ class MainActivity: AppCompatActivity() {
         // 实测节点（v2.1）
         realTestOutput = findViewById(R.id.realTestOutput)
         realTestStatus = findViewById(R.id.realTestStatus)
+        realTestDiag = findViewById(R.id.realTestDiag)
         findViewById<Button>(R.id.btnRealTest).setOnClickListener { startRealTest() }
         findViewById<Button>(R.id.btnAddRealSuccess).setOnClickListener {
             val template = subTemplate
@@ -725,6 +727,7 @@ class MainActivity: AppCompatActivity() {
         realTestResults = emptyList()
         realTestCompleted.clear()
         realTestOutput.text = ""
+        realTestDiag.text = ""
         val total = targets.size
         realTestStatus.text = "实测中 0/$total"
         val job = scope.launch {
@@ -763,6 +766,29 @@ class MainActivity: AppCompatActivity() {
         }
         val cur = realTestOutput.text.toString()
         realTestOutput.text = if (cur.isEmpty()) line else "$cur\n$line"
+    }
+
+    // 实测诊断日志（v2.3.2）：只记事件，不记模板链接、UUID、WS 路径、字节内容。
+    // 只能在主线程调用，调用方用 diag() 投递。
+    private fun appendRealTestDiag(line: String) {
+        val cur = realTestDiag.text.toString()
+        realTestDiag.text = if (cur.isEmpty()) line else "$cur\n$line"
+    }
+
+    private fun diag(line: String) {
+        scope.launch { appendRealTestDiag(line) }
+    }
+
+    // 异常消息脱敏：截掉 URL 部分，绝不带出模板 path/UUID
+    private fun redactDiagMsg(msg: String?, template: VlessTemplate): String {
+        var m = msg ?: ""
+        for (marker in listOf("wss://", "https://", "http://")) {
+            val i = m.indexOf(marker)
+            if (i >= 0) m = m.substring(0, i)
+        }
+        if (template.path.length > 1) m = m.replace(template.path, "[已隐藏]")
+        if (template.uuid.isNotEmpty()) m = m.replace(template.uuid, "[已隐藏]")
+        return m.trim().take(120)
     }
 
     // 实测用的 WebSocket 客户端：把模板域名解析到候选 IP，TCP 连候选 IP、TLS 用模板域名 SNI
@@ -820,6 +846,7 @@ class MainActivity: AppCompatActivity() {
                     val listener = object : WebSocketListener() {
                         override fun onOpen(ws: WebSocket, response: Response) {
                             opened.set(true)
+                            diag("✓ WS已建立 (HTTP ${response.code})")
                             try {
                                 // VLESS 握手：版本 0x00 + 16 字节 UUID + 附加长度 0x00 + 命令 0x01（TCP）
                                 // + 目标端口 80（大端）+ 地址类型 0x02（域名）+ 域名长度 + 域名
@@ -841,6 +868,7 @@ class MainActivity: AppCompatActivity() {
                         }
 
                         override fun onMessage(ws: WebSocket, bytes: ByteString) {
+                            diag("收到 ${bytes.size} 字节" + if (headerParsed) " (VLESS头已解析)" else " (等VLESS头)")
                             try {
                                 buf.write(bytes.toByteArray())
                                 if (!headerParsed) {
@@ -856,12 +884,14 @@ class MainActivity: AppCompatActivity() {
                                                 return
                                             }
                                             headerParsed = true
+                                            diag("VLESS响应头已解析")
                                             val rest = b.copyOfRange(headerLen, b.size)
                                             buf.reset()
                                             buf.write(rest)
                                             if (!sentHttp) {
                                                 sentHttp = true
                                                 ws.send(ByteString.of(*"GET /generate_204 HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8)))
+                                                diag("已发 HTTP 请求")
                                             }
                                         }
                                     }
@@ -873,6 +903,7 @@ class MainActivity: AppCompatActivity() {
                                         val statusLine = text.substring(0, end).lineSequence().firstOrNull() ?: ""
                                         val code = Regex("HTTP/\\S+\\s+(\\d{3})").find(statusLine)
                                             ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                                        if (code != null) diag("HTTP $code")
                                         if (code != null && code in 200..399) {
                                             settle(RealTestResult(candidate.ip, candidate.region, port, System.currentTimeMillis() - start, null))
                                         } else {
@@ -888,6 +919,8 @@ class MainActivity: AppCompatActivity() {
                         }
 
                         override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                            val clean = redactDiagMsg(t.message, template)
+                            diag(if (clean.isEmpty()) "✗ WS失败：${t.javaClass.simpleName}" else "✗ WS失败：${t.javaClass.simpleName}: $clean")
                             if (!opened.get()) {
                                 val reason = if (t is java.net.SocketTimeoutException || t is java.io.InterruptedIOException) "连接超时" else "握手失败"
                                 settle(RealTestResult(candidate.ip, candidate.region, port, -1, reason))
@@ -897,17 +930,20 @@ class MainActivity: AppCompatActivity() {
                         }
 
                         override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                            diag("WS已关闭 code=$code")
                             settle(RealTestResult(candidate.ip, candidate.region, port, -1, "无响应"))
                         }
                     }
+                    diag("→ ${candidate.ip}:$port 连接 $tlsHost")
                     val ws = client.newWebSocket(
-                        Request.Builder().url(url).header("Host", effHost.ifEmpty { tlsHost }).header("User-Agent", "IPTester/1.0").build(),
+                        Request.Builder().url(url).header("Host", effHost.ifEmpty { tlsHost }).build(),
                         listener
                     )
                     cont.invokeOnCancellation { try { ws.close(1000, null) } catch (_: Exception) {} }
                 }
             }
         } catch (e: TimeoutCancellationException) {
+            diag("15秒超时（WS已建立=${opened.get()}）")
             RealTestResult(candidate.ip, candidate.region, port, -1, if (opened.get()) "无响应" else "连接超时")
         } catch (e: CancellationException) {
             throw e

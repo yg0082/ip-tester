@@ -100,6 +100,14 @@
                         android:text="实测结果会显示在这里" android:textColor="#E6EDF3" android:textSize="14sp"
                         android:lineSpacingExtra="4dp" android:textIsSelectable="true" />
                 </androidx.core.widget.NestedScrollView>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="诊断日志" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="12dp" />
+                <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="480dp"
+                    android:layout_marginTop="6dp">
+                    <TextView android:id="@+id/realTestDiag" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:text="诊断日志会显示在这里" android:textColor="#8B949E" android:textSize="13sp"
+                        android:lineSpacingExtra="4dp" android:textIsSelectable="true" />
+                </androidx.core.widget.NestedScrollView>
             </LinearLayout>
 
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
