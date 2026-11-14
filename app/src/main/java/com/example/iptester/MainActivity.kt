@@ -1203,8 +1203,8 @@ class MainActivity: AppCompatActivity() {
         return if (r.isNotEmpty() && r != "--") "$r-${entry.ip}" else entry.ip
     }
 
-    // v2.3.3：从测试结果加入只显示本轮成功结果里延迟最低的前10条
-    private fun topAddList(): List<IpResult> = lastSuccess.sortedBy { it.latencyMs }.take(10)
+    // v2.3.4：从测试结果加入只显示测试结果框里排在前面的10条（Cloudflare 按地区分组、组内按下载速度从高到低，其他按延迟从低到高——即 lastSuccess 本身的顺序）
+    private fun topAddList(): List<IpResult> = lastSuccess.take(10)
 
     // 测试结果旁的“加入订阅”按钮列表（成功结果每条一个按钮）
     private fun renderSubAddList() {
