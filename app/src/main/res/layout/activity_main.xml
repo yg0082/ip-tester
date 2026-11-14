@@ -61,7 +61,7 @@
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                         android:text="📊 测试结果（Cloudflare 按地区分组 · 其他按延迟排序）" android:textSize="15sp" android:textStyle="bold" android:textColor="#E6EDF3" />
                     <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="210dp"
-                        android:layout_marginTop="10dp" android:nestedScrollingEnabled="true">
+                        android:layout_marginTop="10dp">
                         <TextView android:id="@+id/output" android:layout_width="match_parent" android:layout_height="wrap_content"
                             android:text="结果会显示在这里" android:textColor="#E6EDF3" android:textSize="14sp"
                             android:lineSpacingExtra="4dp" android:textIsSelectable="true" />
@@ -152,7 +152,7 @@
                         android:text="共 0 个" android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="4dp" />
                     <!-- v1.4：订阅 IP 列表固定 10 行高度，框内滚动 -->
                     <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="300dp"
-                        android:layout_marginTop="6dp" android:nestedScrollingEnabled="true">
+                        android:layout_marginTop="6dp">
                         <LinearLayout android:id="@+id/subIpList" android:layout_width="match_parent" android:layout_height="wrap_content"
                             android:orientation="vertical" />
                     </androidx.core.widget.NestedScrollView>
