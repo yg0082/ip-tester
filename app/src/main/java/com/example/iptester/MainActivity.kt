@@ -933,7 +933,16 @@ class MainActivity: AppCompatActivity() {
                                 val domain = "www.google.com"
                                 out.write(domain.length)
                                 out.write(domain.toByteArray(Charsets.UTF_8))
-                                ws.send(ByteString.of(*out.toByteArray()))
+                                val payload = ByteString.of(*out.toByteArray())
+                                val sent = ws.send(payload)
+                                diag("握手已发送=$sent (${payload.size}字节)")
+                                if (!sent) {
+                                    scope.launch {
+                                        kotlinx.coroutines.delay(300)
+                                        val retry = try { ws.send(payload) } catch (_: Exception) { false }
+                                        diag("握手重发=$retry")
+                                    }
+                                }
                             } catch (e: Exception) {
                                 settle(RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败"))
                                 feedEof()
