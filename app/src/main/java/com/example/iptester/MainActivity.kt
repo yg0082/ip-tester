@@ -63,7 +63,7 @@ private data class RealTestResult(val ip: String, val region: String, val port: 
 class MainActivity: AppCompatActivity() {
     companion object {
         const val CONCURRENCY = 10
-        const val DOWNLOAD_BYTES = 1_000_000L
+        const val DOWNLOAD_BYTES = 10_000_000L
         // 通用路径下载：最多读 2MB 或 5 秒
         const val GENERIC_DOWNLOAD_MAX_BYTES = 2_000_000L
         const val GENERIC_DOWNLOAD_TIMEOUT_MS = 5000L
@@ -275,15 +275,20 @@ class MainActivity: AppCompatActivity() {
                 return@setOnClickListener
             }
             var added = 0
+            var slow = 0
             for (r in realTestResults) {
                 if (r.error == null && r.latencyMs >= 0) {
-                    if (addSubIp(r.ip, r.port, r.region)) added++
+                    if (r.latencyMs <= 5000) {
+                        if (addSubIp(r.ip, r.port, r.region)) added++
+                    } else {
+                        slow++
+                    }
                 }
             }
             renderSubIpList()
             lastAddListKey = ""
             renderSubAddList()
-            Toast.makeText(this, "已加入 $added 个实测成功的 IP（去重后）", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "已加入 $added 个（延迟 ≤5 秒），$slow 个实测通过但太慢（>5 秒）未加入", Toast.LENGTH_SHORT).show()
         }
         initSubUi()
     }
@@ -659,7 +664,7 @@ class MainActivity: AppCompatActivity() {
         } catch (e: Exception) { null}
     }
 
-    // 下载测速：只测延迟通过的 IP。连候选 IP、用域名 SNI 下 1MB，算 MB/s；测不到返回 -1（显示 --）。
+    // 下载测速：只测延迟通过的 IP。连候选 IP、用域名 SNI 下 10MB，算 MB/s；测不到返回 -1（显示 --）。
     private fun downloadSpeedMbps(ip: String, test: UrlTest): Double {
         val port = if (test.https) test.port else 443
         val client = clientForIp(ip, "speed.cloudflare.com")
@@ -702,7 +707,7 @@ class MainActivity: AppCompatActivity() {
     // ============ 实测节点（v2.1） ============
     // 端到端实测：取本轮 Cloudflare 结果和 IPv6 结果里延迟最低的前 20 名，逐个经模板（VLESS WS+TLS）
     // 连后端打开真实网页，验证整条路（手机→候选 IP→后端→真实网站）。v2.2 起在 VLESS 通道上再做
-    // 一次 TLS 握手、发 HTTPS 请求取 generate_204，跟客户端真实使用一致；单个超时 5 秒，最多 5 个并发。
+    // 一次 TLS 握手、发 HTTPS 请求取 generate_204，跟客户端真实使用一致；单个超时 15 秒，最多 5 个并发。
     private fun startRealTest() {
         val template = subTemplate
         if (template == null) {
@@ -769,8 +774,8 @@ class MainActivity: AppCompatActivity() {
         }
         return OkHttpClient.Builder()
             .dns(dns)
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
             .build()
     }
 
@@ -804,7 +809,7 @@ class MainActivity: AppCompatActivity() {
         val client = realTestClient(candidate.ip, tlsHost)
         val opened = AtomicBoolean(false)
         return try {
-            withTimeout(5000L) {
+            withTimeout(15000L) {
                 suspendCancellableCoroutine<RealTestResult> { cont ->
                     val settled = AtomicBoolean(false)
                     fun settle(r: RealTestResult) {
@@ -972,7 +977,7 @@ class MainActivity: AppCompatActivity() {
                             val sslSocket = (SSLSocketFactory.getDefault() as SSLSocketFactory)
                                 .createSocket(wsSocket, "www.google.com", 443, true) as SSLSocket
                             try {
-                                sslSocket.soTimeout = 5000
+                                sslSocket.soTimeout = 15000
                                 sslSocket.startHandshake()
                                 val req = "GET /generate_204 HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n"
                                 val sslOut = sslSocket.outputStream
