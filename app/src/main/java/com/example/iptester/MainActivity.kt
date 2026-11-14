@@ -969,7 +969,7 @@ class MainActivity: AppCompatActivity() {
                     try {
                         headerDone.await()
                         if (headerParsed) {
-                            val sslSocket = SSLSocketFactory.getDefault()
+                            val sslSocket = (SSLSocketFactory.getDefault() as SSLSocketFactory)
                                 .createSocket(wsSocket, "www.google.com", 443, true) as SSLSocket
                             try {
                                 sslSocket.soTimeout = 5000
