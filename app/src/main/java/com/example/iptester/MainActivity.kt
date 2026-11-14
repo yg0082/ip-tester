@@ -797,7 +797,7 @@ class MainActivity: AppCompatActivity() {
                 suspendCancellableCoroutine<RealTestResult> { cont ->
                     val settled = AtomicBoolean(false)
                     fun settle(r: RealTestResult) {
-                        if (settled.compareAndSet(false, true) && cont.isActive) cont.resume(r)
+                        if (settled.compareAndSet(false, true) && cont.isActive) cont.resume(r, null)
                     }
                     val buf = ByteArrayOutputStream()
                     var headerParsed = false
@@ -818,7 +818,7 @@ class MainActivity: AppCompatActivity() {
                                 val domain = "www.google.com"
                                 out.write(domain.length)
                                 out.write(domain.toByteArray(Charsets.UTF_8))
-                                ws.send(ByteString.of(out.toByteArray()))
+                                ws.send(out.toByteArray().toByteString())
                             } catch (e: Exception) {
                                 settle(RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败"))
                                 try { ws.close(1000, null) } catch (_: Exception) {}
@@ -846,7 +846,7 @@ class MainActivity: AppCompatActivity() {
                                             buf.write(rest)
                                             if (!sentHttp) {
                                                 sentHttp = true
-                                                ws.send(ByteString.of("GET /generate_204 HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8)))
+                                                ws.send("GET /generate_204 HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8).toByteString())
                                             }
                                         }
                                     }
