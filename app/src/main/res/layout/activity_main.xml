@@ -73,6 +73,35 @@
                 </androidx.core.widget.NestedScrollView>
             </LinearLayout>
 
+            <!-- 实测节点（v2.1）：端到端实测。取本轮 Cloudflare 结果里延迟最低的前 20 名，经模板连后端打开真实网页验证整条路 -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:background="@drawable/bg_card" android:orientation="vertical"
+                android:padding="12dp" android:layout_marginTop="12dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="🔍 实测节点（端到端：经模板连后端打开真实网页）" android:textSize="15sp" android:textStyle="bold" android:textColor="#E6EDF3" />
+                <TextView android:id="@+id/realTestStatus" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="还没实测过" android:textColor="#8B949E" android:textSize="13sp" android:layout_marginTop="6dp" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:layout_marginTop="10dp">
+                    <Button android:id="@+id/btnRealTest" android:layout_width="0dp" android:layout_height="48dp"
+                        android:layout_weight="1" android:layout_marginEnd="4dp"
+                        android:background="@drawable/bg_button_outline" android:text="🔍 实测前20名" android:textColor="#58A6FF"
+                        android:textSize="12sp" />
+                    <Button android:id="@+id/btnAddRealSuccess" android:layout_width="0dp" android:layout_height="48dp"
+                        android:layout_weight="1" android:layout_marginStart="4dp"
+                        android:background="@drawable/bg_button_outline" android:text="把实测成功的加入订阅" android:textColor="#58A6FF"
+                        android:textSize="12sp" />
+                </LinearLayout>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="实测结果" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="12dp" />
+                <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="480dp"
+                    android:layout_marginTop="6dp">
+                    <TextView android:id="@+id/realTestOutput" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:text="实测结果会显示在这里" android:textColor="#E6EDF3" android:textSize="14sp"
+                        android:lineSpacingExtra="4dp" android:textIsSelectable="true" />
+                </androidx.core.widget.NestedScrollView>
+            </LinearLayout>
+
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="提示：每行一个 IP 或域名，可带端口（默认 443）。Cloudflare 的 IP 用域名握手测 trace 取延迟和地区，下载照常测；其他目标直接 TCP 测延迟，能连上就算成功，下载能测到就显示，测不到显示 --；结果分 Cloudflare、其他两块显示，只显示和导出成功的。"
                 android:textColor="#8B949E" android:textSize="12sp" android:layout_marginTop="12dp" />
@@ -146,7 +175,7 @@
                     android:text="手动加入优选 IP" android:textSize="14sp" android:textStyle="bold" android:textColor="#E6EDF3" android:layout_marginTop="14dp" />
                 <EditText android:id="@+id/subManualInput" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:minHeight="64dp" android:background="@drawable/bg_input" android:gravity="top" android:padding="12dp"
-                    android:hint="每行一个 IP 或 IP:端口" android:inputType="textMultiLine"
+                    android:hint="每行一个 IP / 域名，可带端口；IPv6 带端口时用 [ ] 括起来" android:inputType="textMultiLine"
                     android:textColor="#E6EDF3" android:textColorHint="#8B949E"
                     android:textSize="13sp" android:layout_marginTop="6dp" />
                 <Button android:id="@+id/btnAddManual" android:layout_width="match_parent" android:layout_height="48dp"

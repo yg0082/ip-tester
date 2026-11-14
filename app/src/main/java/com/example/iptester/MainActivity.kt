@@ -11,11 +11,18 @@ import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
+import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -25,6 +32,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 data class IpResult(val host: String, val ip: String, val latencyMs: Long, val port: Int, val speedMbps: Double, val region: String, val qualified: Boolean, val isCloudflare: Boolean)
@@ -42,6 +50,8 @@ private data class VlessTemplate(
 )
 // 订阅里的一个优选 IP：只存 IP、端口和地区，不存测试细节
 private data class SubIpEntry(val ip: String, val port: Int, val region: String)
+// 实测节点（v2.1）的一条结果：error 为 null 表示成功，latencyMs 为端到端实测延迟，port 为实测实际用的端口
+private data class RealTestResult(val ip: String, val region: String, val port: Int, val latencyMs: Long, val error: String?)
 
 class MainActivity: AppCompatActivity() {
     companion object {
@@ -85,6 +95,12 @@ class MainActivity: AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var count: TextView
     private var lastSuccess: List<IpResult> = emptyList()
+    // 实测节点（v2.1）状态
+    private lateinit var realTestOutput: TextView
+    private lateinit var realTestStatus: TextView
+    private var realTestResults: List<RealTestResult> = emptyList()
+    private var realTestJob: Job? = null
+    private val realTestCompleted = mutableListOf<RealTestResult>()
     private var testJob: Job? = null
     private var pausedByUser = false
     private val completedResults = mutableListOf<IpResult>()
@@ -236,6 +252,31 @@ class MainActivity: AppCompatActivity() {
             lastSuccess = emptyList()
             completedResults.clear()
             Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show()
+        }
+        // 实测节点（v2.1）
+        realTestOutput = findViewById(R.id.realTestOutput)
+        realTestStatus = findViewById(R.id.realTestStatus)
+        findViewById<Button>(R.id.btnRealTest).setOnClickListener { startRealTest() }
+        findViewById<Button>(R.id.btnAddRealSuccess).setOnClickListener {
+            val template = subTemplate
+            if (template == null) {
+                Toast.makeText(this, "请先保存模板", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (realTestResults.isEmpty()) {
+                Toast.makeText(this, "还没有实测结果，先点实测前20名", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            var added = 0
+            for (r in realTestResults) {
+                if (r.error == null && r.latencyMs >= 0) {
+                    if (addSubIp(r.ip, r.port, r.region)) added++
+                }
+            }
+            renderSubIpList()
+            lastAddListKey = ""
+            renderSubAddList()
+            Toast.makeText(this, "已加入 $added 个实测成功的 IP（去重后）", Toast.LENGTH_SHORT).show()
         }
         initSubUi()
     }
@@ -651,6 +692,215 @@ class MainActivity: AppCompatActivity() {
         return "--"
     }
 
+    // ============ 实测节点（v2.1） ============
+    // 端到端实测：取本轮 Cloudflare 结果和 IPv6 结果里延迟最低的前 20 名，逐个经模板（VLESS WS+TLS）
+    // 连后端打开真实网页，验证整条路（手机→候选 IP→后端→真实网站）。单个超时 8 秒，最多 5 个并发。
+    private fun startRealTest() {
+        val template = subTemplate
+        if (template == null) {
+            Toast.makeText(this, "请先保存模板", Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Cloudflare 结果 + IPv6 结果（IPv6 走通用路径、isCloudflare 恒为 false，也要能实测）
+        val cf = lastSuccess.filter { it.isCloudflare || isValidIpv6(it.ip) }.sortedBy { it.latencyMs }
+        if (cf.isEmpty()) {
+            Toast.makeText(this, "请先测一轮 IP", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val targets = cf.take(20)
+        realTestJob?.cancel()
+        realTestResults = emptyList()
+        realTestCompleted.clear()
+        realTestOutput.text = ""
+        val total = targets.size
+        realTestStatus.text = "实测中 0/$total"
+        val job = scope.launch {
+            val sem = Semaphore(5)
+            val done = AtomicInteger(0)
+            val deferreds = targets.map { r ->
+                async(Dispatchers.IO) {
+                    val res = sem.withPermit { testRealOne(r, template) }
+                    synchronized(realTestCompleted) { realTestCompleted.add(res) }
+                    val n = done.incrementAndGet()
+                    withContext(Dispatchers.Main) {
+                        realTestStatus.text = "实测中 $n/$total"
+                        appendRealTestLine(res)
+                    }
+                    res
+                }
+            }
+            try {
+                deferreds.awaitAll()
+                realTestResults = synchronized(realTestCompleted) { realTestCompleted.toList() }
+                val ok = realTestResults.count { it.error == null }
+                realTestStatus.text = "实测完成：$ok/$total 成功"
+            } catch (e: CancellationException) {
+                realTestStatus.text = "实测已停止"
+            }
+        }
+        realTestJob = job
+    }
+
+    private fun appendRealTestLine(r: RealTestResult) {
+        val portPart = if (r.port != 443) " · 端口 ${r.port}" else ""
+        val line = if (r.error == null) {
+            "✓ ${r.ip} · ${r.region} · ${r.latencyMs}ms$portPart"
+        } else {
+            "✗ ${r.ip} · ${r.region} · ${r.error}$portPart"
+        }
+        val cur = realTestOutput.text.toString()
+        realTestOutput.text = if (cur.isEmpty()) line else "$cur\n$line"
+    }
+
+    // 实测用的 WebSocket 客户端：把模板域名解析到候选 IP，TCP 连候选 IP、TLS 用模板域名 SNI
+    private fun realTestClient(candidateIp: String, sniHost: String): OkHttpClient {
+        val dns = object : Dns {
+            override fun lookup(hostname: String): List<InetAddress> {
+                return if (hostname == sniHost) listOf(InetAddress.getByName(candidateIp)) else Dns.SYSTEM.lookup(hostname)
+            }
+        }
+        return OkHttpClient.Builder()
+            .dns(dns)
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .build()
+    }
+
+    // 模板 UUID（带连字符的 32 位十六进制）转 16 字节；格式不对返回 null
+    private fun uuidToBytes(uuid: String): ByteArray? {
+        val hex = uuid.replace("-", "")
+        if (hex.length != 32) return null
+        return try {
+            ByteArray(16) { i -> hex.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // 单个端到端实测：经候选 IP（TLS SNI 用模板域名）连模板后端，VLESS 握手后请求真实网页。
+    // 成功返回带延迟的结果；失败返回失败原因（连接超时 / 握手失败 / 无响应 / HTTP 错误）。
+    // 延迟 = 从开始连接候选 IP 到收到 HTTP 响应头的时间。
+    private suspend fun testRealOne(candidate: IpResult, template: VlessTemplate): RealTestResult {
+        val start = System.currentTimeMillis()
+        // 实测连候选条目自己的端口（全端口，不只 443）；条目没有端口时才回退模板端口
+        val port = if (candidate.port > 0) candidate.port else template.port
+        val tlsHost = template.sni.ifEmpty { template.host.ifEmpty { template.server } }
+        if (tlsHost.isEmpty()) return RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败")
+        val uuidBytes = uuidToBytes(template.uuid)
+            ?: return RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败")
+        val path = if (template.path.startsWith("/")) template.path else "/${template.path}"
+        val url = "wss://$tlsHost:$port$path"
+        val client = realTestClient(candidate.ip, tlsHost)
+        val opened = AtomicBoolean(false)
+        return try {
+            withTimeout(8000L) {
+                suspendCancellableCoroutine<RealTestResult> { cont ->
+                    val settled = AtomicBoolean(false)
+                    fun settle(r: RealTestResult) {
+                        if (settled.compareAndSet(false, true) && cont.isActive) cont.resume(r)
+                    }
+                    val buf = ByteArrayOutputStream()
+                    var headerParsed = false
+                    var sentHttp = false
+                    val listener = object : WebSocketListener() {
+                        override fun onOpen(ws: WebSocket, response: Response) {
+                            opened.set(true)
+                            try {
+                                // VLESS 握手：版本 0x00 + 16 字节 UUID + 附加长度 0x00 + 命令 0x01（TCP）
+                                // + 目标端口 80（大端）+ 地址类型 0x02（域名）+ 域名长度 + 域名
+                                val out = ByteArrayOutputStream()
+                                out.write(0x00)
+                                out.write(uuidBytes)
+                                out.write(0x00)
+                                out.write(0x01)
+                                out.write(0x00); out.write(0x50)
+                                out.write(0x02)
+                                val domain = "www.google.com"
+                                out.write(domain.length)
+                                out.write(domain.toByteArray(Charsets.UTF_8))
+                                ws.send(ByteString.of(out.toByteArray()))
+                            } catch (e: Exception) {
+                                settle(RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败"))
+                                try { ws.close(1000, null) } catch (_: Exception) {}
+                            }
+                        }
+
+                        override fun onMessage(ws: WebSocket, bytes: ByteString) {
+                            try {
+                                buf.write(bytes.toByteArray())
+                                if (!headerParsed) {
+                                    val b = buf.toByteArray()
+                                    if (b.size >= 2) {
+                                        // VLESS 响应头：版本 1 字节 + 附加长度 1 字节 + 附加内容
+                                        val addonLen = b[1].toInt() and 0xFF
+                                        val headerLen = 2 + addonLen
+                                        if (b.size >= headerLen) {
+                                            if (b[0].toInt() != 0x00) {
+                                                settle(RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败"))
+                                                try { ws.close(1000, null) } catch (_: Exception) {}
+                                                return
+                                            }
+                                            headerParsed = true
+                                            val rest = b.copyOfRange(headerLen, b.size)
+                                            buf.reset()
+                                            buf.write(rest)
+                                            if (!sentHttp) {
+                                                sentHttp = true
+                                                ws.send(ByteString.of("GET /generate_204 HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8)))
+                                            }
+                                        }
+                                    }
+                                }
+                                if (headerParsed) {
+                                    val text = String(buf.toByteArray(), Charsets.UTF_8)
+                                    val end = text.indexOf("\r\n\r\n")
+                                    if (end >= 0) {
+                                        val statusLine = text.substring(0, end).lineSequence().firstOrNull() ?: ""
+                                        val code = Regex("HTTP/\\S+\\s+(\\d{3})").find(statusLine)
+                                            ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                                        if (code != null && code in 200..399) {
+                                            settle(RealTestResult(candidate.ip, candidate.region, port, System.currentTimeMillis() - start, null))
+                                        } else {
+                                            settle(RealTestResult(candidate.ip, candidate.region, port, -1, "HTTP 错误"))
+                                        }
+                                        try { ws.close(1000, null) } catch (_: Exception) {}
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                settle(RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败"))
+                                try { ws.close(1000, null) } catch (_: Exception) {}
+                            }
+                        }
+
+                        override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                            if (!opened.get()) {
+                                val reason = if (t is java.net.SocketTimeoutException || t is java.io.InterruptedIOException) "连接超时" else "握手失败"
+                                settle(RealTestResult(candidate.ip, candidate.region, port, -1, reason))
+                            } else {
+                                settle(RealTestResult(candidate.ip, candidate.region, port, -1, "无响应"))
+                            }
+                        }
+
+                        override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                            settle(RealTestResult(candidate.ip, candidate.region, port, -1, "无响应"))
+                        }
+                    }
+                    val ws = client.newWebSocket(
+                        Request.Builder().url(url).header("Host", tlsHost).header("User-Agent", "IPTester/1.0").build(),
+                        listener
+                    )
+                    cont.invokeOnCancellation { try { ws.close(1000, null) } catch (_: Exception) {} }
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            RealTestResult(candidate.ip, candidate.region, port, -1, if (opened.get()) "无响应" else "连接超时")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            RealTestResult(candidate.ip, candidate.region, port, -1, "握手失败")
+        }
+    }
+
     // ============ 优选订阅（v1.3） ============
 
     private fun initSubUi() {
@@ -720,21 +970,31 @@ class MainActivity: AppCompatActivity() {
             renderSubAddList()
             Toast.makeText(this, "已清空本次测试结果", Toast.LENGTH_SHORT).show()
         }
+        // v2.1：手动加入同时接受 IP 和域名（只做格式校验，不解析 DNS）。
+        // 每行任一形式：纯 IP、IP:端口、域名、域名:端口；格式不对的行跳过并提示行号。
+        // 域名条目走现有订阅列表的路：节点名就是域名本身（没有地区前缀），生成节点时只换 server。
         findViewById<Button>(R.id.btnAddManual).setOnClickListener {
             val text = subManualInput.text.toString()
             var added = 0
-            for (line in text.lines()) {
+            val badLines = mutableListOf<Int>()
+            for ((idx, line) in text.lines().withIndex()) {
                 val t = line.trim()
                 if (t.isEmpty()) continue
                 val target = parseTarget(t)
-                if (target == null || target.isDomain) continue
+                if (target == null) { badLines.add(idx + 1); continue }
                 if (addSubIp(target.host, target.port, "")) added++
             }
             if (added > 0) subManualInput.setText("")
             renderSubIpList()
             lastAddListKey = ""
             renderSubAddList()
-            Toast.makeText(this, if (added > 0) "已加入 $added 个（去重后）" else "没加入：输入里没有合法的 IP", Toast.LENGTH_SHORT).show()
+            val msg = when {
+                added > 0 && badLines.isEmpty() -> "已加入 $added 个（去重后）"
+                added > 0 -> "已加入 $added 个（去重后）；第 ${badLines.joinToString("、")} 行格式不对，已跳过"
+                badLines.isNotEmpty() -> "没加入：第 ${badLines.joinToString("、")} 行格式不对"
+                else -> "没加入：输入里没有合法的 IP 或域名"
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
         }
         findViewById<Button>(R.id.btnUpdateSub).setOnClickListener { updateSubscription() }
         // v1.4.4：一键清空订阅列表（只清订阅里的优选 IP，不动测试结果）。这个才是清订阅列表的按钮，位置在“更新订阅”旁边
@@ -1005,7 +1265,7 @@ class MainActivity: AppCompatActivity() {
             val parts = mutableListOf<String>()
             parts.add("name: ${yamlQuote(names[i])}")
             parts.add("server: ${yamlQuote(entry.ip)}")
-            parts.add("port: ${template.port}")
+            parts.add("port: ${if (entry.port > 0) entry.port else template.port}")
             parts.add("type: vless")
             parts.add("uuid: ${template.uuid}")
             parts.add("tls: true")
@@ -1047,7 +1307,7 @@ class MainActivity: AppCompatActivity() {
             sb.append("      \"type\": \"vless\",\n")
             sb.append("      \"tag\": ${jsonDq(names[i])},\n")
             sb.append("      \"server\": ${jsonDq(entry.ip)},\n")
-            sb.append("      \"server_port\": ${template.port},\n")
+            sb.append("      \"server_port\": ${if (entry.port > 0) entry.port else template.port},\n")
             sb.append("      \"uuid\": ${jsonDq(template.uuid)},\n")
             if (template.flow.isNotEmpty()) sb.append("      \"flow\": ${jsonDq(template.flow)},\n")
             sb.append("      \"tls\": {\n")
